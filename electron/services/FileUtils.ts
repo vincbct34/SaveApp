@@ -13,9 +13,76 @@ export interface FileInfo {
 }
 
 /**
- * Calcule la taille totale d'un dossier (récursif)
+ * Patterns de dossiers/fichiers à exclure par défaut
+ * Ces éléments sont générés et ne devraient jamais être sauvegardés
  */
-export async function calculateFolderSize(folderPath: string): Promise<number> {
+export const DEFAULT_EXCLUDE_PATTERNS = [
+    // Dépendances et cache
+    'node_modules',
+    '.pnpm',
+    'vendor',
+    '__pycache__',
+    '.venv',
+    'venv',
+
+    // Build outputs
+    'dist',
+    'build',
+    'out',
+    '.next',
+    '.nuxt',
+    '.output',
+    '.cache',
+    '.turbo',
+
+    // Version control
+    '.git',
+    '.svn',
+    '.hg',
+
+    // IDE et éditeurs
+    '.idea',
+    '.vscode',
+    '*.code-workspace',
+
+    // Systèmes
+    '.DS_Store',
+    'Thumbs.db',
+    '*.log',
+
+    // Temporaires
+    'tmp',
+    'temp',
+    '.tmp',
+    '.temp',
+]
+
+/**
+ * Vérifie si un chemin correspond à un pattern d'exclusion
+ */
+export function shouldExclude(
+    entryName: string,
+    excludePatterns: string[] = DEFAULT_EXCLUDE_PATTERNS
+): boolean {
+    for (const pattern of excludePatterns) {
+        // Pattern exact
+        if (entryName === pattern) return true
+
+        // Pattern avec wildcard simple (*.ext)
+        if (pattern.startsWith('*') && entryName.endsWith(pattern.slice(1))) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Calcule la taille totale d'un dossier (récursif, avec exclusions)
+ */
+export async function calculateFolderSize(
+    folderPath: string,
+    excludePatterns: string[] = DEFAULT_EXCLUDE_PATTERNS
+): Promise<number> {
     let totalSize = 0
 
     async function scanDir(dirPath: string): Promise<void> {
@@ -23,6 +90,11 @@ export async function calculateFolderSize(folderPath: string): Promise<number> {
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
 
             for (const entry of entries) {
+                // Vérifier les exclusions
+                if (shouldExclude(entry.name, excludePatterns)) {
+                    continue
+                }
+
                 const fullPath = path.join(dirPath, entry.name)
 
                 if (entry.isDirectory()) {
@@ -46,9 +118,12 @@ export async function calculateFolderSize(folderPath: string): Promise<number> {
 }
 
 /**
- * Liste tous les fichiers d'un dossier avec leurs métadonnées
+ * Liste tous les fichiers d'un dossier avec leurs métadonnées (avec exclusions)
  */
-export async function scanDirectory(folderPath: string): Promise<FileInfo[]> {
+export async function scanDirectory(
+    folderPath: string,
+    excludePatterns: string[] = DEFAULT_EXCLUDE_PATTERNS
+): Promise<FileInfo[]> {
     const files: FileInfo[] = []
 
     async function scanDir(dirPath: string): Promise<void> {
@@ -56,6 +131,11 @@ export async function scanDirectory(folderPath: string): Promise<FileInfo[]> {
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
 
             for (const entry of entries) {
+                // Vérifier les exclusions
+                if (shouldExclude(entry.name, excludePatterns)) {
+                    continue
+                }
+
                 const fullPath = path.join(dirPath, entry.name)
                 const relativePath = path.relative(folderPath, fullPath)
 
