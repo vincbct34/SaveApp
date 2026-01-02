@@ -23,6 +23,16 @@ export const DEFAULT_EXCLUDE_PATTERNS = [
     'vendor',
     '__pycache__',
     '.venv',
+    // Build artifacts (Haskell, Rust, JS, etc.)
+    '.stack-work',
+    'target',
+    'dist',
+    'build',
+    'out',
+    '.output',
+    '.nuxt',
+    '.next',
+    '.cache',
     'venv',
 
     // Build outputs

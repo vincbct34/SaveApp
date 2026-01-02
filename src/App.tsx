@@ -70,6 +70,15 @@ function App() {
     // Ref pour savoir si le chargement initial est fait
     const hasLoadedRef = useRef(false)
 
+    // Refs pour la logique d'auto-backup (accessibles dans les closures)
+    const isBackingUpRef = useRef(false)
+    const lastAutoBackupDriveIdRef = useRef<string | null>(null)
+
+    // Synchroniser la ref isBackingUp
+    useEffect(() => {
+        isBackingUpRef.current = isBackingUp
+    }, [isBackingUp])
+
     // Charger les données persistées au démarrage + USB
     useEffect(() => {
         if (!window.electronAPI) return
@@ -144,26 +153,31 @@ function App() {
                 // DÉCLENCHEMENT AUTO-BACKUP
                 // On utilise le state setter pour avoir la valeur à jour de autoBackupDriveIds
                 setAutoBackupDriveIds((currentAutoBackupIds) => {
+                    // Check 1: Est-ce que ce drive est configuré pour l'auto-backup ?
                     if (currentAutoBackupIds.has(drive.id)) {
-                        console.log(`[SaveApp] ⚡ Auto-backup déclenché pour ${drive.label}`)
 
-                        // Délai pour s'assurer que le disque est prêt (1s)
+                        // Check 2: Est-ce qu'un backup est déjà en cours ?
+                        if (isBackingUpRef.current) {
+                            console.log(`[SaveApp] ⚠️ Auto-backup ignoré pour ${drive.label} (Backup déjà en cours)`)
+                            return currentAutoBackupIds
+                        }
+
+                        // Check 3: Est-ce qu'on vient juste de lancer un backup pour ce drive ?
+                        // (Protection anti-rebond si le drive se déco/reco rapidement)
+                        if (lastAutoBackupDriveIdRef.current === drive.id) {
+                            console.log(`[SaveApp] ⚠️ Auto-backup ignoré pour ${drive.label} (Déjà déclenché récemment)`)
+                            return currentAutoBackupIds
+                        }
+
+                        console.log(`[SaveApp] ⚡ Auto-backup déclenché pour ${drive.label}`)
+                        lastAutoBackupDriveIdRef.current = drive.id
+
+                        // Délai pour s'assurer que le disque est prêt (1.5s)
                         setTimeout(() => {
                             // Sélectionner ce disque comme destination
                             setSelectedDestinationId(drive.id)
 
-                            // Déclencher le backup
-                            // Note: On ne peut pas appeler handleStartBackup directement ici car il dépend du state qui ne sera pas encore à jour
-                            // On va utiliser un hack propre : cliquer sur le bouton "Sauvegarder" programmatiquement ou extraire la logique
-                            // Mieux: on ajoute un useEffect qui surveille un flag 'triggerBackup'
-                            // Pour l'instant, appeler handleStartBackup devrait marcher si on met une petite pause car setSelectedDestinationId est asynchrone
-                            // Mais handleStartBackup utilise 'selectedDestinationId' du scope, pas le state à jour... 
-                            // Solution: Passer l'ID explicitement à handleStartBackup ou utiliser une ref.
-
-                            // Pour simplifier cette étape critique sans refactorer tout handleStartBackup :
-                            // On simule le clic utilisateur sur "Sauvegarder" via le Dashboard qui le reçoit en prop
-                            // Ou mieux, on utilise un effet de bord.
-
+                            // Déclencher le backup via click simulé
                             const backupButton = document.getElementById('start-backup-btn')
                             if (backupButton) {
                                 backupButton.click()
@@ -179,6 +193,11 @@ function App() {
         const unsubDisconnected = window.electronAPI.usb.onDriveDisconnected((drive) => {
             console.log(`[SaveApp] USB déconnecté: ${drive.letter}`)
             setDestinations((prev) => prev.filter((d) => d.id !== drive.id)) // Utiliser l'ID
+
+            // Reset du flag anti-rebond si le drive est déconnecté
+            if (lastAutoBackupDriveIdRef.current === drive.id) {
+                lastAutoBackupDriveIdRef.current = null
+            }
         })
 
         // Écouter les événements de progression

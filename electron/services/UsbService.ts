@@ -29,7 +29,7 @@ class UsbService extends EventEmitter {
     /**
      * Liste tous les lecteurs (USB, fixed, network)
      */
-    async listDrives(): Promise<DriveInfo[]> {
+    async listDrives(): Promise<DriveInfo[] | null> {
         try {
             // Utiliser PowerShell pour lister les lecteurs via WMI
             const { stdout } = await execAsync(
@@ -65,7 +65,7 @@ class UsbService extends EventEmitter {
             return drives
         } catch (error) {
             console.error('[UsbService] Erreur lors de la liste des lecteurs:', error)
-            return []
+            return null
         }
     }
 
@@ -75,13 +75,13 @@ class UsbService extends EventEmitter {
      */
     async listUsbDrives(): Promise<DriveInfo[]> {
         const drives = await this.listDrives()
-        return drives.filter((d) => {
-            // Lecteurs amovibles (clés USB)
-            if (d.type === 'usb') return true
-            // Disques fixes non-système (disques durs externes)
-            if (d.type === 'fixed' && d.letter !== 'C:') return true
-            return false
-        })
+        if (!drives) return []
+
+        return drives.filter(
+            (drive) =>
+                drive.isReady &&
+                (drive.type === 'usb' || (drive.type === 'fixed' && drive.letter !== 'C:'))
+        )
     }
 
     /**
@@ -95,13 +95,19 @@ class UsbService extends EventEmitter {
 
         // Initialiser la liste des lecteurs
         this.listDrives().then((drives) => {
-            drives.forEach((d) => this.previousDrives.set(d.letter, d))
+            if (drives) {
+                drives.forEach((d) => this.previousDrives.set(d.letter, d))
+            }
         })
 
         // Polling périodique
         this.pollingInterval = setInterval(async () => {
             const currentDrives = await this.listDrives()
-            const currentMap = new Map(currentDrives.map((d) => [d.letter, d]))
+
+            // Si erreur (null), on ignore ce tour pour éviter les faux positifs de déconnexion
+            if (currentDrives === null) return
+
+            const currentMap = new Map<string, DriveInfo>(currentDrives.map((d) => [d.letter, d]))
 
             // Détecter les nouveaux lecteurs
             const currentEntries = Array.from(currentMap.entries())
