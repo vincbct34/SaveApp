@@ -37,6 +37,15 @@ export interface UserPreferences {
     lastOpenedPath?: string
 }
 
+export interface DriveInfo {
+    letter: string
+    label: string
+    type: 'usb' | 'fixed' | 'network' | 'unknown'
+    size: number
+    freeSpace: number
+    isReady: boolean
+}
+
 /**
  * API exposée au renderer process via le context bridge
  */
@@ -108,6 +117,31 @@ const electronAPI = {
 
         setPreferences: (prefs: Partial<UserPreferences>) =>
             ipcRenderer.invoke('store:setPreferences', prefs) as Promise<boolean>,
+    },
+
+    // === USB Detection ===
+    usb: {
+        getDrives: () => ipcRenderer.invoke('usb:getDrives') as Promise<DriveInfo[]>,
+
+        getUsbDrives: () => ipcRenderer.invoke('usb:getUsbDrives') as Promise<DriveInfo[]>,
+
+        startWatching: () => ipcRenderer.send('usb:startWatching'),
+
+        stopWatching: () => ipcRenderer.send('usb:stopWatching'),
+
+        onDriveConnected: (callback: (drive: DriveInfo) => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, drive: DriveInfo) =>
+                callback(drive)
+            ipcRenderer.on('usb:driveConnected', handler)
+            return () => ipcRenderer.removeListener('usb:driveConnected', handler)
+        },
+
+        onDriveDisconnected: (callback: (drive: DriveInfo) => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, drive: DriveInfo) =>
+                callback(drive)
+            ipcRenderer.on('usb:driveDisconnected', handler)
+            return () => ipcRenderer.removeListener('usb:driveDisconnected', handler)
+        },
     },
 
     // === Application ===

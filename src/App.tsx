@@ -60,16 +60,15 @@ function App() {
     // Sources et destinations
     const [sources, setSources] = useState<SourceFolder[]>([])
     const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set())
-    const [destinations] = useState<Destination[]>([
-        { id: '1', type: 'usb', name: 'Disque Backup (D:)', path: 'D:\\SaveApp_Backup', available: false },
-        { id: '2', type: 'nas', name: 'NAS Synology', path: '\\\\NAS\\Backups', available: false },
-        { id: '3', type: 'cloud', name: 'Google Drive', available: false },
+    const [destinations, setDestinations] = useState<Destination[]>([
+        { id: 'nas', type: 'nas', name: 'NAS Synology', path: '\\\\NAS\\Backups', available: false },
+        { id: 'cloud', type: 'cloud', name: 'Google Drive', available: false },
     ])
 
     // Ref pour savoir si le chargement initial est fait
     const hasLoadedRef = useRef(false)
 
-    // Charger les données persistées au démarrage
+    // Charger les données persistées au démarrage + USB
     useEffect(() => {
         if (!window.electronAPI) return
 
@@ -78,7 +77,6 @@ function App() {
             if (savedSources) {
                 setSources(savedSources)
             }
-            // Marquer comme chargé pour permettre la persistance
             hasLoadedRef.current = true
         })
 
@@ -89,12 +87,64 @@ function App() {
             }
         })
 
+        // Charger les lecteurs USB disponibles
+        window.electronAPI.usb.getDrives().then((drives) => {
+            const usbDrives = drives.filter((d) => d.type === 'usb' && d.isReady)
+            setDestinations((prev) => {
+                // Garder les destinations non-USB + ajouter les USB détectés
+                const nonUsbDests = prev.filter((d) => d.type !== 'usb')
+                const usbDests: Destination[] = usbDrives.map((d) => ({
+                    id: `usb-${d.letter}`,
+                    type: 'usb',
+                    name: `${d.label} (${d.letter})`,
+                    path: d.letter + '\\SaveApp_Backup',
+                    available: true,
+                }))
+                return [...usbDests, ...nonUsbDests]
+            })
+        })
+
+        // Démarrer la surveillance USB
+        window.electronAPI.usb.startWatching()
+
+        // Écouter les branchements
+        const unsubConnected = window.electronAPI.usb.onDriveConnected((drive) => {
+            if (drive.type === 'usb' && drive.isReady) {
+                console.log(`[SaveApp] USB connecté: ${drive.letter} (${drive.label})`)
+                setDestinations((prev) => {
+                    // Vérifier si déjà présent
+                    if (prev.some((d) => d.id === `usb-${drive.letter}`)) return prev
+                    return [
+                        {
+                            id: `usb-${drive.letter}`,
+                            type: 'usb',
+                            name: `${drive.label} (${drive.letter})`,
+                            path: drive.letter + '\\SaveApp_Backup',
+                            available: true,
+                        },
+                        ...prev,
+                    ]
+                })
+            }
+        })
+
+        // Écouter les débranchements
+        const unsubDisconnected = window.electronAPI.usb.onDriveDisconnected((drive) => {
+            console.log(`[SaveApp] USB déconnecté: ${drive.letter}`)
+            setDestinations((prev) => prev.filter((d) => d.id !== `usb-${drive.letter}`))
+        })
+
         // Écouter les événements de progression
-        const unsubscribe = window.electronAPI.backup.onProgress((prog) => {
+        const unsubProgress = window.electronAPI.backup.onProgress((prog) => {
             setProgress(prog)
         })
 
-        return () => { unsubscribe() }
+        return () => {
+            unsubConnected()
+            unsubDisconnected()
+            unsubProgress()
+            window.electronAPI?.usb.stopWatching()
+        }
     }, [])
 
     // Persister les sources quand elles changent (après le chargement initial)

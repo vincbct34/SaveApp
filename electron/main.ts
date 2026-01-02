@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { syncService, SyncProgress, SyncResult } from './services/SyncService'
 import { storeService, SourceConfig } from './services/StoreService'
 import { calculateFolderSize } from './services/FileUtils'
+import { usbService, DriveInfo } from './services/UsbService'
 
 // Référence à la fenêtre principale pour envoyer les événements
 let mainWindow: BrowserWindow | null = null
@@ -181,6 +182,33 @@ function setupIpcHandlers(): void {
             return true
         }
     )
+
+    // === USB Detection ===
+
+    ipcMain.handle('usb:getDrives', async () => {
+        return await usbService.listDrives()
+    })
+
+    ipcMain.handle('usb:getUsbDrives', async () => {
+        return await usbService.listUsbDrives()
+    })
+
+    ipcMain.on('usb:startWatching', () => {
+        usbService.startWatching()
+
+        // Envoyer les événements au renderer
+        usbService.on('drive:connected', (drive: DriveInfo) => {
+            mainWindow?.webContents.send('usb:driveConnected', drive)
+        })
+
+        usbService.on('drive:disconnected', (drive: DriveInfo) => {
+            mainWindow?.webContents.send('usb:driveDisconnected', drive)
+        })
+    })
+
+    ipcMain.on('usb:stopWatching', () => {
+        usbService.stopWatching()
+    })
 
     // === Application ===
 
