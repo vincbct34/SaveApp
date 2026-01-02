@@ -37,6 +37,7 @@ interface StoreSchema {
     destinations: DestinationConfig[]
     lastBackupDate: string | null
     preferences: UserPreferences
+    autoBackupDriveIds: string[]
 }
 
 /**
@@ -50,6 +51,7 @@ const defaults: StoreSchema = {
         autoBackupOnUSB: true,
         keepDeletedFiles: false,
     },
+    autoBackupDriveIds: [],
 }
 
 /**
@@ -94,6 +96,16 @@ class StoreService {
 
     setDestinations(destinations: DestinationConfig[]): void {
         this.store.set('destinations', destinations)
+    }
+
+    // === Auto Backup Drives ===
+
+    getAutoBackupDriveIds(): string[] {
+        return this.store.get('autoBackupDriveIds', [])
+    }
+
+    setAutoBackupDriveIds(ids: string[]): void {
+        this.store.set('autoBackupDriveIds', ids)
     }
 
     // === Dernière sauvegarde ===

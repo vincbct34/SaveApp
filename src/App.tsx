@@ -65,6 +65,7 @@ function App() {
         { id: 'cloud', type: 'cloud', name: 'Google Drive', available: false },
     ])
     const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null)
+    const [autoBackupDriveIds, setAutoBackupDriveIds] = useState<Set<string>>(new Set())
 
     // Ref pour savoir si le chargement initial est fait
     const hasLoadedRef = useRef(false)
@@ -79,6 +80,13 @@ function App() {
                 setSources(savedSources)
             }
             hasLoadedRef.current = true
+        })
+
+        // Charger les autoBackupDriveIds persistés
+        window.electronAPI.store.getAutoBackupIds().then((ids) => {
+            if (ids) {
+                setAutoBackupDriveIds(new Set(ids))
+            }
         })
 
         // Charger la date de dernière sauvegarde
@@ -98,7 +106,7 @@ function App() {
                 // Garder les destinations non-USB + ajouter les lecteurs détectés
                 const nonUsbDests = prev.filter((d) => d.type !== 'usb')
                 const usbDests: Destination[] = externalDrives.map((d) => ({
-                    id: `usb-${d.letter}`,
+                    id: d.id, // Utiliser l'ID unique (Serial Number)
                     type: 'usb',
                     name: `${d.label} (${d.letter})`,
                     path: d.letter + '\\SaveApp_Backup',
@@ -116,12 +124,14 @@ function App() {
             // Inclure USB et disques fixes non-système
             const isExternal = drive.isReady && (drive.type === 'usb' || (drive.type === 'fixed' && drive.letter !== 'C:'))
             if (isExternal) {
-                console.log(`[SaveApp] Lecteur externe connecté: ${drive.letter} (${drive.label})`)
+                console.log(`[SaveApp] Lecteur externe connecté: ${drive.letter} (${drive.label}) ID: ${drive.id}`)
+
+                // Mettre à jour la liste des destinations
                 setDestinations((prev) => {
-                    if (prev.some((d) => d.id === `usb-${drive.letter}`)) return prev
+                    if (prev.some((d) => d.id === drive.id)) return prev
                     return [
                         {
-                            id: `usb-${drive.letter}`,
+                            id: drive.id,
                             type: 'usb',
                             name: `${drive.label} (${drive.letter})`,
                             path: drive.letter + '\\SaveApp_Backup',
@@ -130,13 +140,45 @@ function App() {
                         ...prev,
                     ]
                 })
+
+                // DÉCLENCHEMENT AUTO-BACKUP
+                // On utilise le state setter pour avoir la valeur à jour de autoBackupDriveIds
+                setAutoBackupDriveIds((currentAutoBackupIds) => {
+                    if (currentAutoBackupIds.has(drive.id)) {
+                        console.log(`[SaveApp] ⚡ Auto-backup déclenché pour ${drive.label}`)
+
+                        // Délai pour s'assurer que le disque est prêt (1s)
+                        setTimeout(() => {
+                            // Sélectionner ce disque comme destination
+                            setSelectedDestinationId(drive.id)
+
+                            // Déclencher le backup
+                            // Note: On ne peut pas appeler handleStartBackup directement ici car il dépend du state qui ne sera pas encore à jour
+                            // On va utiliser un hack propre : cliquer sur le bouton "Sauvegarder" programmatiquement ou extraire la logique
+                            // Mieux: on ajoute un useEffect qui surveille un flag 'triggerBackup'
+                            // Pour l'instant, appeler handleStartBackup devrait marcher si on met une petite pause car setSelectedDestinationId est asynchrone
+                            // Mais handleStartBackup utilise 'selectedDestinationId' du scope, pas le state à jour... 
+                            // Solution: Passer l'ID explicitement à handleStartBackup ou utiliser une ref.
+
+                            // Pour simplifier cette étape critique sans refactorer tout handleStartBackup :
+                            // On simule le clic utilisateur sur "Sauvegarder" via le Dashboard qui le reçoit en prop
+                            // Ou mieux, on utilise un effet de bord.
+
+                            const backupButton = document.getElementById('start-backup-btn')
+                            if (backupButton) {
+                                backupButton.click()
+                            }
+                        }, 1500)
+                    }
+                    return currentAutoBackupIds
+                })
             }
         })
 
         // Écouter les débranchements
         const unsubDisconnected = window.electronAPI.usb.onDriveDisconnected((drive) => {
             console.log(`[SaveApp] USB déconnecté: ${drive.letter}`)
-            setDestinations((prev) => prev.filter((d) => d.id !== `usb-${drive.letter}`))
+            setDestinations((prev) => prev.filter((d) => d.id !== drive.id)) // Utiliser l'ID
         })
 
         // Écouter les événements de progression
@@ -154,14 +196,15 @@ function App() {
 
     // Persister les sources quand elles changent (après le chargement initial)
     useEffect(() => {
-        if (!window.electronAPI) return
-        if (!hasLoadedRef.current) {
-            // Premier rendu - ne pas persister, on attend le chargement
-            return
-        }
-        // Persister même si la liste est vide (pour permettre la suppression)
+        if (!window.electronAPI || !hasLoadedRef.current) return
         window.electronAPI.store.setSources(sources)
     }, [sources])
+
+    // Persister les préférences d'auto-backup
+    useEffect(() => {
+        if (!window.electronAPI || !hasLoadedRef.current) return
+        window.electronAPI.store.setAutoBackupIds(Array.from(autoBackupDriveIds))
+    }, [autoBackupDriveIds])
 
     /**
      * Ajoute une nouvelle source via le dialogue natif
@@ -213,6 +256,21 @@ function App() {
      */
     const handleToggleSource = useCallback((id: string) => {
         setSelectedSourceIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) {
+                next.delete(id)
+            } else {
+                next.add(id)
+            }
+            return next
+        })
+    }, [])
+
+    /**
+     * Toggle l'auto-backup pour une destination
+     */
+    const handleToggleAutoBackup = useCallback((id: string) => {
+        setAutoBackupDriveIds((prev) => {
             const next = new Set(prev)
             if (next.has(id)) {
                 next.delete(id)
@@ -349,6 +407,9 @@ function App() {
                         onStartBackup={handleStartBackup}
                     />
 
+                    {/* Bouton caché pour déclenchement auto */}
+                    <button id="start-backup-btn" className="hidden" onClick={handleStartBackup}>Trigger</button>
+
                     {isBackingUp && progress && (
                         <ProgressBar
                             progress={progress}
@@ -370,6 +431,8 @@ function App() {
                             destinations={destinations}
                             selectedId={selectedDestinationId}
                             onSelectDestination={setSelectedDestinationId}
+                            autoBackupIds={autoBackupDriveIds}
+                            onToggleAutoBackup={handleToggleAutoBackup}
                         />
                     </div>
                 </div>

@@ -9,6 +9,7 @@ const execAsync = promisify(exec)
  * Informations sur un lecteur
  */
 export interface DriveInfo {
+    id: string            // SerialNumber ou Letter
     letter: string        // Ex: "D:"
     label: string         // Ex: "USB_BACKUP"
     type: 'usb' | 'fixed' | 'network' | 'unknown'
@@ -32,7 +33,7 @@ class UsbService extends EventEmitter {
         try {
             // Utiliser PowerShell pour lister les lecteurs via WMI
             const { stdout } = await execAsync(
-                'powershell -NoProfile -Command "Get-WmiObject -Class Win32_LogicalDisk | Select-Object DeviceID, VolumeName, DriveType, Size, FreeSpace | ConvertTo-Json -Compress"',
+                'powershell -NoProfile -Command "Get-WmiObject -Class Win32_LogicalDisk | Select-Object DeviceID, VolumeName, DriveType, Size, FreeSpace, VolumeSerialNumber | ConvertTo-Json -Compress"',
                 { encoding: 'utf8' }
             )
 
@@ -49,7 +50,9 @@ class UsbService extends EventEmitter {
                     DriveType: number
                     Size: number | null
                     FreeSpace: number | null
+                    VolumeSerialNumber: string | null
                 }) => ({
+                    id: d.VolumeSerialNumber || d.DeviceID, // Utiliser SerialNumber comme ID unique, fallback sur la lettre
                     letter: d.DeviceID,
                     label: d.VolumeName || 'Sans nom',
                     type: this.getDriveType(d.DriveType),

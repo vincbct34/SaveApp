@@ -183,6 +183,15 @@ function setupIpcHandlers(): void {
         }
     )
 
+    ipcMain.handle('store:getAutoBackupIds', () => {
+        return storeService.getAutoBackupDriveIds()
+    })
+
+    ipcMain.handle('store:setAutoBackupIds', (_event, ids: string[]) => {
+        storeService.setAutoBackupDriveIds(ids)
+        return true
+    })
+
     // === USB Detection ===
 
     ipcMain.handle('usb:getDrives', async () => {

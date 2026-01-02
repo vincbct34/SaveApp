@@ -38,6 +38,7 @@ export interface UserPreferences {
 }
 
 export interface DriveInfo {
+    id: string
     letter: string
     label: string
     type: 'usb' | 'fixed' | 'network' | 'unknown'
@@ -117,6 +118,12 @@ const electronAPI = {
 
         setPreferences: (prefs: Partial<UserPreferences>) =>
             ipcRenderer.invoke('store:setPreferences', prefs) as Promise<boolean>,
+
+        getAutoBackupIds: () =>
+            ipcRenderer.invoke('store:getAutoBackupIds') as Promise<string[]>,
+
+        setAutoBackupIds: (ids: string[]) =>
+            ipcRenderer.invoke('store:setAutoBackupIds', ids) as Promise<boolean>,
     },
 
     // === USB Detection ===

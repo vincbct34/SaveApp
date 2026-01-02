@@ -4,13 +4,21 @@ interface DestinationsListProps {
     destinations: Destination[]
     selectedId: string | null
     onSelectDestination: (id: string) => void
+    autoBackupIds: Set<string>
+    onToggleAutoBackup: (id: string) => void
 }
 
 /**
  * Liste des destinations de sauvegarde
- * Permet de sélectionner une destination pour la sauvegarde
+ * Permet de sélectionner une destination et d'activer l'auto-backup
  */
-function DestinationsList({ destinations, selectedId, onSelectDestination }: DestinationsListProps) {
+function DestinationsList({
+    destinations,
+    selectedId,
+    onSelectDestination,
+    autoBackupIds,
+    onToggleAutoBackup
+}: DestinationsListProps) {
     /**
      * Retourne l'icône correspondant au type de destination
      */
@@ -86,52 +94,70 @@ function DestinationsList({ destinations, selectedId, onSelectDestination }: Des
                 {destinations.map((dest) => {
                     const isSelected = dest.id === selectedId
                     const isClickable = dest.available
+                    const isAutoBackup = autoBackupIds.has(dest.id)
+                    const isUsb = dest.type === 'usb'
 
                     return (
-                        <div
-                            key={dest.id}
-                            onClick={() => isClickable && onSelectDestination(dest.id)}
-                            className={`flex items-center gap-3 p-3 rounded-xl transition-all ${isClickable ? 'cursor-pointer' : 'cursor-not-allowed'
-                                } ${isSelected
-                                    ? 'bg-success-500/10 border-2 border-success-500/50'
-                                    : dest.available
-                                        ? 'bg-dark-800/50 hover:bg-dark-800 border-2 border-transparent'
-                                        : 'bg-dark-800/20 opacity-60 border-2 border-transparent'
-                                }`}
-                        >
-                            {/* Radio button visuel */}
+                        <div key={dest.id} className="group relative">
                             <div
-                                className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-colors ${isSelected
+                                onClick={() => isClickable && onSelectDestination(dest.id)}
+                                className={`flex items-center gap-3 p-3 rounded-xl transition-all ${isClickable ? 'cursor-pointer' : 'cursor-not-allowed'
+                                    } ${isSelected
+                                        ? 'bg-success-500/10 border-2 border-success-500/50'
+                                        : dest.available
+                                            ? 'bg-dark-800/50 hover:bg-dark-800 border-2 border-transparent'
+                                            : 'bg-dark-800/20 opacity-60 border-2 border-transparent'
+                                    }`}
+                            >
+                                {/* Radio button visuel */}
+                                <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-colors ${isSelected
                                         ? 'bg-success-500'
                                         : dest.available
                                             ? 'bg-dark-700 border-2 border-dark-500'
                                             : 'bg-dark-800 border-2 border-dark-600'
-                                    }`}
-                            >
-                                {isSelected && (
-                                    <div className="w-2 h-2 rounded-full bg-white" />
-                                )}
+                                    }`}>
+                                    {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                </div>
+
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${dest.available ? 'bg-success-500/20 text-success-400' : 'bg-dark-700 text-dark-500'
+                                    }`}>
+                                    {getIcon(dest.type)}
+                                </div>
+
+                                <div className="flex-1 min-w-0 pr-8">
+                                    <p className="font-medium text-dark-200 truncate">{dest.name}</p>
+                                    <p className="text-sm text-dark-500">{getTypeLabel(dest.type)}</p>
+                                </div>
+
+                                {/* Indicateur de disponibilité */}
+                                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${dest.available
+                                        ? 'bg-success-500/20 text-success-400'
+                                        : 'bg-dark-700 text-dark-500'
+                                    }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${dest.available ? 'bg-success-400' : 'bg-dark-500'}`} />
+                                    {dest.available ? 'Connecté' : 'Déconnecté'}
+                                </div>
                             </div>
 
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${dest.available ? 'bg-success-500/20 text-success-400' : 'bg-dark-700 text-dark-500'
-                                }`}>
-                                {getIcon(dest.type)}
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                                <p className="font-medium text-dark-200 truncate">{dest.name}</p>
-                                <p className="text-sm text-dark-500">{getTypeLabel(dest.type)}</p>
-                            </div>
-
-                            {/* Indicateur de disponibilité */}
-                            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${dest.available
-                                    ? 'bg-success-500/20 text-success-400'
-                                    : 'bg-dark-700 text-dark-500'
-                                }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${dest.available ? 'bg-success-400' : 'bg-dark-500'
-                                    }`} />
-                                {dest.available ? 'Connecté' : 'Déconnecté'}
-                            </div>
+                            {/* Bouton Auto-Backup pour USB */}
+                            {isUsb && dest.available && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        onToggleAutoBackup(dest.id)
+                                    }}
+                                    className={`absolute right-36 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors flex items-center gap-2 ${isAutoBackup
+                                            ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/50'
+                                            : 'bg-dark-700/50 text-dark-400 hover:bg-dark-700 hover:text-dark-200'
+                                        }`}
+                                    title={isAutoBackup ? "Désactiver la sauvegarde automatique" : "Activer la sauvegarde automatique au branchement"}
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                    </svg>
+                                    {isAutoBackup && <span className="text-xs font-medium">Auto</span>}
+                                </button>
+                            )}
                         </div>
                     )
                 })}
@@ -139,7 +165,7 @@ function DestinationsList({ destinations, selectedId, onSelectDestination }: Des
 
             {/* Hint pour USB */}
             <p className="mt-4 text-xs text-dark-500 text-center">
-                💡 Branchez votre disque externe pour lancer une sauvegarde automatique
+                💡 Branchez votre disque externe et activez ⚡ pour lancer une sauvegarde automatique
             </p>
         </section>
     )
