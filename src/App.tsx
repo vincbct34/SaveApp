@@ -60,7 +60,7 @@ function App() {
     // Sources et destinations
     const [sources, setSources] = useState<SourceFolder[]>([])
     const [destinations] = useState<Destination[]>([
-        { id: '1', type: 'usb', name: 'Disque Backup (D:)', path: 'D:\\SaveApp_Backup', available: true },
+        { id: '1', type: 'usb', name: 'Disque Backup (D:)', path: 'D:\\SaveApp_Backup', available: false },
         { id: '2', type: 'nas', name: 'NAS Synology', path: '\\\\NAS\\Backups', available: false },
         { id: '3', type: 'cloud', name: 'Google Drive', available: false },
     ])
@@ -147,11 +147,17 @@ function App() {
             return
         }
 
-        // Trouver une destination disponible
-        const destination = destinations.find((d) => d.available && d.path)
-        if (!destination) {
-            console.warn('[SaveApp] Aucune destination disponible')
-            return
+        // Trouver une destination disponible OU demander à l'utilisateur
+        let destinationPath = destinations.find((d) => d.available && d.path)?.path
+
+        if (!destinationPath) {
+            // Demander à l'utilisateur de choisir une destination
+            const selectedPath = await window.electronAPI.dialog.selectFolder()
+            if (!selectedPath) {
+                console.log('[SaveApp] Sélection de destination annulée')
+                return
+            }
+            destinationPath = selectedPath
         }
 
         setIsBackingUp(true)
@@ -163,7 +169,7 @@ function App() {
             // Lancer la sauvegarde pour chaque source
             for (const source of sources) {
                 console.log(`[SaveApp] Sauvegarde de ${source.name}...`)
-                const result = await window.electronAPI.backup.start(source, destination.path!)
+                const result = await window.electronAPI.backup.start(source, destinationPath)
                 setLastResult(result)
 
                 if (!result.success || result.errors.length > 0) {

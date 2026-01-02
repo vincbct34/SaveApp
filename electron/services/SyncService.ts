@@ -79,7 +79,16 @@ class SyncService extends EventEmitter {
         this.isRunning = true
         this.isPaused = false
         this.isCancelled = false
-        this.currentProgress.errors = []
+        this.currentProgress = {
+            phase: 'scanning',
+            totalFiles: 0,
+            processedFiles: 0,
+            totalBytes: 0,
+            copiedBytes: 0,
+            currentFile: '',
+            percent: 0,
+            errors: [],
+        }
 
         const startTime = Date.now()
         let filesCreated = 0
@@ -154,13 +163,20 @@ class SyncService extends EventEmitter {
                         // Vérifier si le fichier est verrouillé
                         if (await isFileLocked(sourceFile.path)) {
                             this.addError(sourceFile.path, 'Fichier verrouillé', 'EBUSY')
+                            // Ajouter la taille du fichier aux bytes "traités" même s'il est ignoré
+                            bytesTransferred += sourceFile.size
+                            this.updateProgress({
+                                copiedBytes: bytesTransferred,
+                            })
                             continue
                         }
 
-                        // Copier le fichier
-                        await copyFileWithStream(sourceFile.path, destPath, (copied) => {
+                        // Copier le fichier - on suit l'avancement de CE fichier
+                        const bytesBeforeThisFile = bytesTransferred
+                        await copyFileWithStream(sourceFile.path, destPath, (copiedInFile) => {
+                            // copiedInFile = bytes copiés dans CE fichier (cumulatif)
                             this.updateProgress({
-                                copiedBytes: this.currentProgress.copiedBytes + copied,
+                                copiedBytes: bytesBeforeThisFile + copiedInFile,
                             })
                         })
 
@@ -174,7 +190,18 @@ class SyncService extends EventEmitter {
                     } catch (error: unknown) {
                         const err = error as NodeJS.ErrnoException
                         this.addError(sourceFile.path, err.message, err.code || 'UNKNOWN')
+                        // On ajoute quand même la taille pour ne pas bloquer le %
+                        bytesTransferred += sourceFile.size
+                        this.updateProgress({
+                            copiedBytes: bytesTransferred,
+                        })
                     }
+                } else {
+                    // Fichier identique - on l'ajoute aux bytes traités
+                    bytesTransferred += sourceFile.size
+                    this.updateProgress({
+                        copiedBytes: bytesTransferred,
+                    })
                 }
 
                 // Marquer comme traité
@@ -189,7 +216,8 @@ class SyncService extends EventEmitter {
             if (options.deleteOrphans && !this.isCancelled) {
                 this.updateProgress({ phase: 'deleting' })
 
-                for (const [relativePath, destFile] of destFileMap) {
+                const orphanEntries = Array.from(destFileMap.entries())
+                for (const [relativePath, destFile] of orphanEntries) {
                     if (destFile.isDirectory) continue
 
                     try {
