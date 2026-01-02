@@ -64,6 +64,7 @@ function App() {
         { id: 'nas', type: 'nas', name: 'NAS Synology', path: '\\\\NAS\\Backups', available: false },
         { id: 'cloud', type: 'cloud', name: 'Google Drive', available: false },
     ])
+    const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null)
 
     // Ref pour savoir si le chargement initial est fait
     const hasLoadedRef = useRef(false)
@@ -260,12 +261,21 @@ function App() {
             sourcesToBackup = [newSource]
         }
 
-        // ÉTAPE 2 : Sélectionner une destination
-        // (pour l'instant on demande toujours, la Phase 3 ajoutera la détection USB)
-        const destinationPath = await window.electronAPI.dialog.selectDestination()
-        if (!destinationPath) {
-            console.log('[SaveApp] Sélection de destination annulée')
-            return
+        // ÉTAPE 2 : Utiliser la destination sélectionnée ou en demander une
+        let destinationPath: string | null = null
+
+        // Vérifier si une destination est sélectionnée dans l'UI
+        const selectedDest = destinations.find((d) => d.id === selectedDestinationId && d.available)
+        if (selectedDest && selectedDest.path) {
+            destinationPath = selectedDest.path
+            console.log(`[SaveApp] Destination sélectionnée: ${selectedDest.name}`)
+        } else {
+            // Sinon, demander via dialogue
+            destinationPath = await window.electronAPI.dialog.selectDestination()
+            if (!destinationPath) {
+                console.log('[SaveApp] Sélection de destination annulée')
+                return
+            }
         }
 
         // ÉTAPE 3 : Lancer la sauvegarde
@@ -292,7 +302,7 @@ function App() {
             setIsBackingUp(false)
             setProgress(null)
         }
-    }, [sources, selectedSourceIds])
+    }, [sources, selectedSourceIds, destinations, selectedDestinationId])
 
     /**
      * Met en pause / reprend la sauvegarde
@@ -356,7 +366,11 @@ function App() {
                             onRemoveSource={handleRemoveSource}
                             onToggleSource={handleToggleSource}
                         />
-                        <DestinationsList destinations={destinations} />
+                        <DestinationsList
+                            destinations={destinations}
+                            selectedId={selectedDestinationId}
+                            onSelectDestination={setSelectedDestinationId}
+                        />
                     </div>
                 </div>
             </main>

@@ -2,13 +2,15 @@ import type { Destination } from '../../App'
 
 interface DestinationsListProps {
     destinations: Destination[]
+    selectedId: string | null
+    onSelectDestination: (id: string) => void
 }
 
 /**
  * Liste des destinations de sauvegarde
- * Affiche USB, NAS et Cloud avec indicateur de disponibilité
+ * Permet de sélectionner une destination pour la sauvegarde
  */
-function DestinationsList({ destinations }: DestinationsListProps) {
+function DestinationsList({ destinations, selectedId, onSelectDestination }: DestinationsListProps) {
     /**
      * Retourne l'icône correspondant au type de destination
      */
@@ -46,6 +48,10 @@ function DestinationsList({ destinations }: DestinationsListProps) {
         }
     }
 
+    // Compter les destinations disponibles et sélectionnées
+    const availableCount = destinations.filter((d) => d.available).length
+    const selectedDest = destinations.find((d) => d.id === selectedId)
+
     return (
         <section className="bg-dark-900 rounded-2xl p-6 border border-dark-800">
             {/* En-tête */}
@@ -59,7 +65,7 @@ function DestinationsList({ destinations }: DestinationsListProps) {
                     <div>
                         <h2 className="text-lg font-semibold text-dark-100">Destinations</h2>
                         <p className="text-sm text-dark-400">
-                            {destinations.filter(d => d.available).length}/{destinations.length} disponible{destinations.filter(d => d.available).length > 1 ? 's' : ''}
+                            {selectedDest ? `${selectedDest.name}` : `${availableCount} disponible${availableCount > 1 ? 's' : ''}`}
                         </p>
                     </div>
                 </div>
@@ -77,35 +83,58 @@ function DestinationsList({ destinations }: DestinationsListProps) {
 
             {/* Liste des destinations */}
             <div className="space-y-2">
-                {destinations.map((dest) => (
-                    <div
-                        key={dest.id}
-                        className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${dest.available
-                                ? 'bg-dark-800/50 hover:bg-dark-800'
-                                : 'bg-dark-800/20 opacity-60'
-                            }`}
-                    >
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${dest.available ? 'bg-success-500/20 text-success-400' : 'bg-dark-700 text-dark-500'
-                            }`}>
-                            {getIcon(dest.type)}
-                        </div>
+                {destinations.map((dest) => {
+                    const isSelected = dest.id === selectedId
+                    const isClickable = dest.available
 
-                        <div className="flex-1 min-w-0">
-                            <p className="font-medium text-dark-200 truncate">{dest.name}</p>
-                            <p className="text-sm text-dark-500">{getTypeLabel(dest.type)}</p>
-                        </div>
+                    return (
+                        <div
+                            key={dest.id}
+                            onClick={() => isClickable && onSelectDestination(dest.id)}
+                            className={`flex items-center gap-3 p-3 rounded-xl transition-all ${isClickable ? 'cursor-pointer' : 'cursor-not-allowed'
+                                } ${isSelected
+                                    ? 'bg-success-500/10 border-2 border-success-500/50'
+                                    : dest.available
+                                        ? 'bg-dark-800/50 hover:bg-dark-800 border-2 border-transparent'
+                                        : 'bg-dark-800/20 opacity-60 border-2 border-transparent'
+                                }`}
+                        >
+                            {/* Radio button visuel */}
+                            <div
+                                className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-colors ${isSelected
+                                        ? 'bg-success-500'
+                                        : dest.available
+                                            ? 'bg-dark-700 border-2 border-dark-500'
+                                            : 'bg-dark-800 border-2 border-dark-600'
+                                    }`}
+                            >
+                                {isSelected && (
+                                    <div className="w-2 h-2 rounded-full bg-white" />
+                                )}
+                            </div>
 
-                        {/* Indicateur de disponibilité */}
-                        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${dest.available
-                                ? 'bg-success-500/20 text-success-400'
-                                : 'bg-dark-700 text-dark-500'
-                            }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${dest.available ? 'bg-success-400' : 'bg-dark-500'
-                                }`} />
-                            {dest.available ? 'Connecté' : 'Déconnecté'}
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${dest.available ? 'bg-success-500/20 text-success-400' : 'bg-dark-700 text-dark-500'
+                                }`}>
+                                {getIcon(dest.type)}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                                <p className="font-medium text-dark-200 truncate">{dest.name}</p>
+                                <p className="text-sm text-dark-500">{getTypeLabel(dest.type)}</p>
+                            </div>
+
+                            {/* Indicateur de disponibilité */}
+                            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${dest.available
+                                    ? 'bg-success-500/20 text-success-400'
+                                    : 'bg-dark-700 text-dark-500'
+                                }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${dest.available ? 'bg-success-400' : 'bg-dark-500'
+                                    }`} />
+                                {dest.available ? 'Connecté' : 'Déconnecté'}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
             </div>
 
             {/* Hint pour USB */}
