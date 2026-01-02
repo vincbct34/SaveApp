@@ -87,13 +87,16 @@ function App() {
             }
         })
 
-        // Charger les lecteurs USB disponibles
+        // Charger les lecteurs externes disponibles (USB + disques fixes non-C:)
         window.electronAPI.usb.getDrives().then((drives) => {
-            const usbDrives = drives.filter((d) => d.type === 'usb' && d.isReady)
+            // Inclure USB et disques fixes non-système
+            const externalDrives = drives.filter((d) =>
+                d.isReady && (d.type === 'usb' || (d.type === 'fixed' && d.letter !== 'C:'))
+            )
             setDestinations((prev) => {
-                // Garder les destinations non-USB + ajouter les USB détectés
+                // Garder les destinations non-USB + ajouter les lecteurs détectés
                 const nonUsbDests = prev.filter((d) => d.type !== 'usb')
-                const usbDests: Destination[] = usbDrives.map((d) => ({
+                const usbDests: Destination[] = externalDrives.map((d) => ({
                     id: `usb-${d.letter}`,
                     type: 'usb',
                     name: `${d.label} (${d.letter})`,
@@ -109,10 +112,11 @@ function App() {
 
         // Écouter les branchements
         const unsubConnected = window.electronAPI.usb.onDriveConnected((drive) => {
-            if (drive.type === 'usb' && drive.isReady) {
-                console.log(`[SaveApp] USB connecté: ${drive.letter} (${drive.label})`)
+            // Inclure USB et disques fixes non-système
+            const isExternal = drive.isReady && (drive.type === 'usb' || (drive.type === 'fixed' && drive.letter !== 'C:'))
+            if (isExternal) {
+                console.log(`[SaveApp] Lecteur externe connecté: ${drive.letter} (${drive.label})`)
                 setDestinations((prev) => {
-                    // Vérifier si déjà présent
                     if (prev.some((d) => d.id === `usb-${drive.letter}`)) return prev
                     return [
                         {

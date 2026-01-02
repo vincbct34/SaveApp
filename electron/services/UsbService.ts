@@ -26,22 +26,23 @@ class UsbService extends EventEmitter {
     private isWatching = false
 
     /**
-     * Liste tous les lecteurs amovibles (USB) connectés
+     * Liste tous les lecteurs (USB, fixed, network)
      */
     async listDrives(): Promise<DriveInfo[]> {
         try {
             // Utiliser PowerShell pour lister les lecteurs via WMI
-            const { stdout } = await execAsync(`
-        powershell -Command "Get-WmiObject -Class Win32_LogicalDisk | 
-        Select-Object DeviceID, VolumeName, DriveType, Size, FreeSpace | 
-        ConvertTo-Json"
-      `)
+            const { stdout } = await execAsync(
+                'powershell -NoProfile -Command "Get-WmiObject -Class Win32_LogicalDisk | Select-Object DeviceID, VolumeName, DriveType, Size, FreeSpace | ConvertTo-Json -Compress"',
+                { encoding: 'utf8' }
+            )
+
+            console.log('[UsbService] PowerShell output:', stdout.substring(0, 200))
 
             const rawDrives = JSON.parse(stdout || '[]')
             const drivesArray = Array.isArray(rawDrives) ? rawDrives : [rawDrives]
 
-            return drivesArray
-                .filter((d: { DeviceID: string }) => d.DeviceID) // Filtrer les entrées vides
+            const drives = drivesArray
+                .filter((d: { DeviceID: string }) => d.DeviceID)
                 .map((d: {
                     DeviceID: string
                     VolumeName: string | null
@@ -56,6 +57,9 @@ class UsbService extends EventEmitter {
                     freeSpace: d.FreeSpace || 0,
                     isReady: d.Size !== null && d.Size > 0,
                 }))
+
+            console.log('[UsbService] Lecteurs détectés:', drives.map((d) => `${d.letter} (${d.type})`).join(', '))
+            return drives
         } catch (error) {
             console.error('[UsbService] Erreur lors de la liste des lecteurs:', error)
             return []
@@ -63,11 +67,18 @@ class UsbService extends EventEmitter {
     }
 
     /**
-     * Liste uniquement les lecteurs USB (amovibles)
+     * Liste les lecteurs externes (amovibles + disques fixes non-système)
+     * Les disques durs externes USB apparaissent souvent comme DriveType 3 (fixed)
      */
     async listUsbDrives(): Promise<DriveInfo[]> {
         const drives = await this.listDrives()
-        return drives.filter((d) => d.type === 'usb')
+        return drives.filter((d) => {
+            // Lecteurs amovibles (clés USB)
+            if (d.type === 'usb') return true
+            // Disques fixes non-système (disques durs externes)
+            if (d.type === 'fixed' && d.letter !== 'C:') return true
+            return false
+        })
     }
 
     /**
