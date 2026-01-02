@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Application de sauvegarde automatisée pour utilisateurs non-techniques",
   "main": "dist/main/index.js",
-  "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
