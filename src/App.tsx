@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TitleBar from './components/TitleBar/TitleBar'
 import Dashboard from './components/Dashboard/Dashboard'
 import SourcesList from './components/SourcesList/SourcesList'
@@ -59,11 +59,15 @@ function App() {
 
     // Sources et destinations
     const [sources, setSources] = useState<SourceFolder[]>([])
+    const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set())
     const [destinations] = useState<Destination[]>([
         { id: '1', type: 'usb', name: 'Disque Backup (D:)', path: 'D:\\SaveApp_Backup', available: false },
         { id: '2', type: 'nas', name: 'NAS Synology', path: '\\\\NAS\\Backups', available: false },
         { id: '3', type: 'cloud', name: 'Google Drive', available: false },
     ])
+
+    // Ref pour savoir si le chargement initial est fait
+    const hasLoadedRef = useRef(false)
 
     // Charger les données persistées au démarrage
     useEffect(() => {
@@ -71,9 +75,11 @@ function App() {
 
         // Charger les sources sauvegardées
         window.electronAPI.store.getSources().then((savedSources) => {
-            if (savedSources && savedSources.length > 0) {
+            if (savedSources) {
                 setSources(savedSources)
             }
+            // Marquer comme chargé pour permettre la persistance
+            hasLoadedRef.current = true
         })
 
         // Charger la date de dernière sauvegarde
@@ -91,9 +97,14 @@ function App() {
         return () => { unsubscribe() }
     }, [])
 
-    // Persister les sources quand elles changent
+    // Persister les sources quand elles changent (après le chargement initial)
     useEffect(() => {
-        if (!window.electronAPI || sources.length === 0) return
+        if (!window.electronAPI) return
+        if (!hasLoadedRef.current) {
+            // Premier rendu - ne pas persister, on attend le chargement
+            return
+        }
+        // Persister même si la liste est vide (pour permettre la suppression)
         window.electronAPI.store.setSources(sources)
     }, [sources])
 
@@ -115,15 +126,18 @@ function App() {
         const sizeResult = await window.electronAPI.folder.getSize(folderPath)
         const size = sizeResult.success ? sizeResult.size || 0 : 0
 
+        const newId = Date.now().toString()
         setSources((prev) => [
             ...prev,
             {
-                id: Date.now().toString(),
+                id: newId,
                 path: folderPath,
                 name: folderName,
                 size,
             },
         ])
+        // Auto-sélectionner la nouvelle source
+        setSelectedSourceIds((prev) => new Set([...prev, newId]))
     }, [])
 
     /**
@@ -131,10 +145,31 @@ function App() {
      */
     const handleRemoveSource = useCallback((id: string) => {
         setSources((prev) => prev.filter((s) => s.id !== id))
+        // Retirer de la sélection aussi
+        setSelectedSourceIds((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+        })
     }, [])
 
     /**
-     * Lance la sauvegarde
+     * Toggle la sélection d'une source
+     */
+    const handleToggleSource = useCallback((id: string) => {
+        setSelectedSourceIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) {
+                next.delete(id)
+            } else {
+                next.add(id)
+            }
+            return next
+        })
+    }, [])
+
+    /**
+     * Lance la sauvegarde (avec flux guidé)
      */
     const handleStartBackup = useCallback(async () => {
         if (!window.electronAPI) {
@@ -142,32 +177,51 @@ function App() {
             return
         }
 
-        if (sources.length === 0) {
-            console.warn('[SaveApp] Aucune source configurée')
+        // Récupérer les sources sélectionnées
+        let sourcesToBackup = sources.filter((s) => selectedSourceIds.has(s.id))
+
+        // ÉTAPE 1 : Si aucune source sélectionnée, demander d'en ajouter une
+        if (sourcesToBackup.length === 0) {
+            const folderPath = await window.electronAPI.dialog.selectFolder()
+            if (!folderPath) {
+                console.log('[SaveApp] Sélection de source annulée')
+                return
+            }
+
+            const folderName = folderPath.split('\\').pop() || folderPath
+            const sizeResult = await window.electronAPI.folder.getSize(folderPath)
+            const size = sizeResult.success ? sizeResult.size || 0 : 0
+
+            const newId = Date.now().toString()
+            const newSource = {
+                id: newId,
+                path: folderPath,
+                name: folderName,
+                size,
+            }
+
+            // Ajouter à la liste, sélectionner, et utiliser pour cette sauvegarde
+            setSources((prev) => [...prev, newSource])
+            setSelectedSourceIds((prev) => new Set([...prev, newId]))
+            sourcesToBackup = [newSource]
+        }
+
+        // ÉTAPE 2 : Sélectionner une destination
+        // (pour l'instant on demande toujours, la Phase 3 ajoutera la détection USB)
+        const destinationPath = await window.electronAPI.dialog.selectDestination()
+        if (!destinationPath) {
+            console.log('[SaveApp] Sélection de destination annulée')
             return
         }
 
-        // Trouver une destination disponible OU demander à l'utilisateur
-        let destinationPath = destinations.find((d) => d.available && d.path)?.path
-
-        if (!destinationPath) {
-            // Demander à l'utilisateur de choisir une destination
-            const selectedPath = await window.electronAPI.dialog.selectFolder()
-            if (!selectedPath) {
-                console.log('[SaveApp] Sélection de destination annulée')
-                return
-            }
-            destinationPath = selectedPath
-        }
-
+        // ÉTAPE 3 : Lancer la sauvegarde
         setIsBackingUp(true)
         setIsPaused(false)
         setProgress(null)
         setLastResult(null)
 
         try {
-            // Lancer la sauvegarde pour chaque source
-            for (const source of sources) {
+            for (const source of sourcesToBackup) {
                 console.log(`[SaveApp] Sauvegarde de ${source.name}...`)
                 const result = await window.electronAPI.backup.start(source, destinationPath)
                 setLastResult(result)
@@ -184,7 +238,7 @@ function App() {
             setIsBackingUp(false)
             setProgress(null)
         }
-    }, [sources, destinations])
+    }, [sources, selectedSourceIds])
 
     /**
      * Met en pause / reprend la sauvegarde
@@ -243,8 +297,10 @@ function App() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <SourcesList
                             sources={sources}
+                            selectedIds={selectedSourceIds}
                             onAddSource={handleAddSource}
                             onRemoveSource={handleRemoveSource}
+                            onToggleSource={handleToggleSource}
                         />
                         <DestinationsList destinations={destinations} />
                     </div>

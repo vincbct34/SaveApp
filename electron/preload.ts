@@ -59,6 +59,8 @@ const electronAPI = {
     dialog: {
         selectFolder: () =>
             ipcRenderer.invoke('dialog:selectFolder') as Promise<string | null>,
+        selectDestination: () =>
+            ipcRenderer.invoke('dialog:selectDestination') as Promise<string | null>,
     },
 
     // === Dossiers ===

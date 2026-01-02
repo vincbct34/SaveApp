@@ -70,6 +70,7 @@ function createWindow(): void {
 function setupIpcHandlers(): void {
     // === Dialogues ===
 
+    // Sélection d'un dossier source
     ipcMain.handle('dialog:selectFolder', async () => {
         const lastPath = storeService.getLastOpenedPath()
         const result = await dialog.showOpenDialog({
@@ -82,8 +83,21 @@ function setupIpcHandlers(): void {
             return null
         }
 
-        // Mémoriser le chemin pour la prochaine fois
         storeService.setLastOpenedPath(dirname(result.filePaths[0]))
+        return result.filePaths[0]
+    })
+
+    // Sélection d'un dossier destination
+    ipcMain.handle('dialog:selectDestination', async () => {
+        const result = await dialog.showOpenDialog({
+            properties: ['openDirectory'],
+            title: 'Choisir où sauvegarder vos fichiers',
+        })
+
+        if (result.canceled || !result.filePaths[0]) {
+            return null
+        }
+
         return result.filePaths[0]
     })
 
