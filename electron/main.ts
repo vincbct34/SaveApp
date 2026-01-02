@@ -1,39 +1,42 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { syncService, SyncProgress, SyncResult } from './services/SyncService'
+import { storeService, SourceConfig } from './services/StoreService'
+import { calculateFolderSize } from './services/FileUtils'
+
+// Référence à la fenêtre principale pour envoyer les événements
+let mainWindow: BrowserWindow | null = null
 
 /**
  * Crée la fenêtre principale de l'application
  */
 function createWindow(): void {
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1000,
         height: 700,
         minWidth: 800,
         minHeight: 600,
-        frame: false, // Fenêtre sans bordure pour UI personnalisée
-        backgroundColor: '#020617', // dark-950
+        frame: false,
+        backgroundColor: '#020617',
         show: false,
         webPreferences: {
             preload: join(__dirname, '../preload/index.js'),
             sandbox: true,
-            contextIsolation: true, // Sécurité : isolation du contexte
-            nodeIntegration: false, // Sécurité : pas d'accès Node dans le renderer
+            contextIsolation: true,
+            nodeIntegration: false,
         },
     })
 
-    // Affiche la fenêtre quand elle est prête
     mainWindow.on('ready-to-show', () => {
-        mainWindow.show()
+        mainWindow?.show()
     })
 
-    // Ouvre les liens externes dans le navigateur par défaut
     mainWindow.webContents.setWindowOpenHandler((details) => {
         shell.openExternal(details.url)
         return { action: 'deny' }
     })
 
-    // Charge l'URL de dev ou le fichier HTML en production
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
         mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
     } else {
@@ -41,25 +44,23 @@ function createWindow(): void {
     }
 
     // Handlers pour les contrôles de fenêtre
-    ipcMain.on('window:minimize', () => mainWindow.minimize())
+    ipcMain.on('window:minimize', () => mainWindow?.minimize())
     ipcMain.on('window:maximize', () => {
-        if (mainWindow.isMaximized()) {
+        if (mainWindow?.isMaximized()) {
             mainWindow.unmaximize()
         } else {
-            mainWindow.maximize()
+            mainWindow?.maximize()
         }
     })
-    ipcMain.on('window:close', () => mainWindow.close())
+    ipcMain.on('window:close', () => mainWindow?.close())
 
-    // Handler pour vérifier si la fenêtre est maximisée
-    ipcMain.handle('window:isMaximized', () => mainWindow.isMaximized())
+    ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized())
 
-    // Écoute les changements d'état de la fenêtre
     mainWindow.on('maximize', () => {
-        mainWindow.webContents.send('window:maximized-changed', true)
+        mainWindow?.webContents.send('window:maximized-changed', true)
     })
     mainWindow.on('unmaximize', () => {
-        mainWindow.webContents.send('window:maximized-changed', false)
+        mainWindow?.webContents.send('window:maximized-changed', false)
     })
 }
 
@@ -67,39 +68,117 @@ function createWindow(): void {
  * Handlers IPC pour les fonctionnalités de l'application
  */
 function setupIpcHandlers(): void {
-    // Sélection d'un dossier source
+    // === Dialogues ===
+
     ipcMain.handle('dialog:selectFolder', async () => {
+        const lastPath = storeService.getLastOpenedPath()
         const result = await dialog.showOpenDialog({
             properties: ['openDirectory'],
             title: 'Sélectionner un dossier à sauvegarder',
+            defaultPath: lastPath,
         })
 
-        if (result.canceled) {
+        if (result.canceled || !result.filePaths[0]) {
             return null
         }
 
+        // Mémoriser le chemin pour la prochaine fois
+        storeService.setLastOpenedPath(dirname(result.filePaths[0]))
         return result.filePaths[0]
     })
 
-    // Test de sauvegarde (Phase 1 - juste un log)
-    ipcMain.handle('backup:start', async () => {
-        console.log('🔄 [SaveApp] Démarrage de la sauvegarde...')
-        // TODO: Implémenter la vraie logique de sauvegarde en Phase 2
-        return { success: true, message: 'Sauvegarde simulée terminée' }
+    // === Calcul de taille ===
+
+    ipcMain.handle('folder:getSize', async (_event, folderPath: string) => {
+        try {
+            const size = await calculateFolderSize(folderPath)
+            return { success: true, size }
+        } catch (error: unknown) {
+            const err = error as Error
+            return { success: false, error: err.message }
+        }
     })
 
-    // Récupérer la version de l'application
+    // === Sauvegarde ===
+
+    ipcMain.handle(
+        'backup:start',
+        async (_event, source: SourceConfig, destinationPath: string) => {
+            console.log('🔄 [SaveApp] Démarrage de la sauvegarde...')
+            console.log(`   Source: ${source.path}`)
+            console.log(`   Destination: ${destinationPath}`)
+
+            // Écouter les événements de progression
+            const progressHandler = (progress: SyncProgress): void => {
+                mainWindow?.webContents.send('backup:progress', progress)
+            }
+
+            syncService.on('progress', progressHandler)
+
+            try {
+                const result: SyncResult = await syncService.sync(source, destinationPath)
+                console.log('✅ [SaveApp] Sauvegarde terminée:', result)
+                return result
+            } finally {
+                syncService.off('progress', progressHandler)
+            }
+        }
+    )
+
+    ipcMain.on('backup:pause', () => {
+        console.log('⏸️ [SaveApp] Pause de la sauvegarde')
+        syncService.pause()
+    })
+
+    ipcMain.on('backup:resume', () => {
+        console.log('▶️ [SaveApp] Reprise de la sauvegarde')
+        syncService.resume()
+    })
+
+    ipcMain.on('backup:cancel', () => {
+        console.log('❌ [SaveApp] Annulation de la sauvegarde')
+        syncService.cancel()
+    })
+
+    // === Store (Persistance) ===
+
+    ipcMain.handle('store:getSources', () => {
+        return storeService.getSources()
+    })
+
+    ipcMain.handle('store:setSources', (_event, sources: SourceConfig[]) => {
+        storeService.setSources(sources)
+        return true
+    })
+
+    ipcMain.handle('store:getLastBackupDate', () => {
+        const date = storeService.getLastBackupDate()
+        return date ? date.toISOString() : null
+    })
+
+    ipcMain.handle('store:getPreferences', () => {
+        return storeService.getPreferences()
+    })
+
+    ipcMain.handle(
+        'store:setPreferences',
+        (_event, prefs: Parameters<typeof storeService.setPreferences>[0]) => {
+            storeService.setPreferences(prefs)
+            return true
+        }
+    )
+
+    // === Application ===
+
     ipcMain.handle('app:getVersion', () => {
         return app.getVersion()
     })
 }
 
-// Initialisation de l'application
+// Initialisation
 app.whenReady().then(() => {
-    // Identifiant unique pour l'application Windows
     electronApp.setAppUserModelId('com.saveapp')
 
-    // Hot reload en dev - F12 pour DevTools
     app.on('browser-window-created', (_, window) => {
         optimizer.watchWindowShortcuts(window)
     })
@@ -107,7 +186,6 @@ app.whenReady().then(() => {
     setupIpcHandlers()
     createWindow()
 
-    // macOS : recréer la fenêtre si on clique sur l'icône du dock
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow()
@@ -115,7 +193,6 @@ app.whenReady().then(() => {
     })
 })
 
-// Quitter l'application quand toutes les fenêtres sont fermées (sauf macOS)
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit()

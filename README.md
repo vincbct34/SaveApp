@@ -1,6 +1,6 @@
-# 📁 SaveApp - Phase 1 : Le Squelette
+# 📁 SaveApp - Phase 2 : La Logique Locale
 
-> Setup du projet Electron + Vite + React + TypeScript avec UI statique et communication IPC basique.
+> Implémentation de la sélection de dossiers, l'algorithme de copie miroir avec streams, et la gestion des erreurs.
 
 ---
 
@@ -8,10 +8,10 @@
 
 | Objectif | Statut |
 |----------|--------|
-| Initialiser Electron + Vite + React + TypeScript | ✅ |
-| Configurer Tailwind CSS | ✅ |
-| Créer l'UI statique du dashboard | ✅ |
-| Implémenter la communication IPC sécurisée | ✅ |
+| Sélection de dossiers avec calcul de taille | 🔜 |
+| Algorithme de copie avec fs streams | 🔜 |
+| Gestion des fichiers verrouillés (Soft Fail) | 🔜 |
+| Persistance des sources avec electron-store | 🔜 |
 
 ---
 
@@ -24,105 +24,106 @@ npm run dev
 
 ---
 
-## 🏗️ Structure du projet
+## 🏗️ Nouvelle architecture
 
 ```
-SaveApp/
-├── electron/
-│   ├── main.ts              # Process principal Electron
-│   └── preload.ts           # Context bridge sécurisé (API IPC)
-├── src/
-│   ├── components/
-│   │   ├── TitleBar/        # Barre de titre custom (min/max/close)
-│   │   ├── Dashboard/       # État de sauvegarde (vert/orange)
-│   │   ├── SourcesList/     # Liste des dossiers sources
-│   │   ├── DestinationsList/# Destinations (USB/NAS/Cloud)
-│   │   └── ProgressBar/     # Barre de progression animée
-│   ├── App.tsx              # Composant racine
-│   ├── index.css            # Styles Tailwind + custom
-│   ├── main.tsx             # Entry point React
-│   └── electron.d.ts        # Types pour l'API Electron
-├── index.html               # Template HTML
-├── electron.vite.config.ts  # Config Electron-Vite
-├── tailwind.config.js       # Palette de couleurs custom
-├── tsconfig.json            # Config TypeScript
-└── package.json
+electron/
+├── main.ts                 # + nouveaux handlers IPC
+├── preload.ts              # + nouvelles méthodes exposées
+└── services/
+    ├── SyncService.ts      # [NEW] Logique de synchronisation
+    ├── FileUtils.ts        # [NEW] Utilitaires fichiers
+    └── StoreService.ts     # [NEW] Persistance electron-store
 ```
 
 ---
 
-## 🧩 Composants UI
+## 🔄 SyncService : Le cœur de la Phase 2
 
-### TitleBar
-Barre de titre personnalisée remplaçant la barre système native :
-- Logo SaveApp
-- Boutons : Minimiser, Maximiser/Restaurer, Fermer
-- Zone draggable pour déplacer la fenêtre
+### Algorithme de copie miroir
 
-### Dashboard
-Affichage de l'état de sauvegarde :
-- **Vert** : "Tout est sauvegardé" (dernière sauvegarde < 24h)
-- **Orange** : "Sauvegarde nécessaire" (jamais ou > 24h)
-- Bouton principal "Sauvegarder maintenant"
+```
+Source                    Destination
+├── file1.txt    ──►     ├── file1.txt     (copié si nouveau/modifié)
+├── file2.txt    ──►     ├── file2.txt     (ignoré si identique)
+└── file3.txt    ──►     └── file3.txt     (créé)
+                         └── old.txt        (SUPPRIMÉ - plus dans source)
+```
 
-### SourcesList
-Liste des dossiers à sauvegarder :
-- Nom et chemin de chaque dossier
-- Taille formatée (Ko, Mo, Go)
-- Bouton + pour ajouter via dialogue natif
-- Bouton supprimer au hover
-
-### DestinationsList
-Destinations configurées :
-- Types : USB, NAS, Cloud
-- Indicateur de disponibilité (Connecté/Déconnecté)
-- Icônes distinctes par type
-
-### ProgressBar
-Barre de progression pendant la sauvegarde :
-- Pourcentage et estimation du temps
-- Animation shimmer
-- Bouton Annuler
-
----
-
-## 🔌 Communication IPC
-
-L'API est exposée via `window.electronAPI` depuis le preload script :
+### Copie avec Streams (performance)
 
 ```typescript
-// Contrôles fenêtre
-window.electronAPI.window.minimize()
-window.electronAPI.window.maximize()
-window.electronAPI.window.close()
+// ❌ Mauvais - charge tout en RAM
+const data = fs.readFileSync(source)
+fs.writeFileSync(dest, data)
 
-// Dialogues
-const path = await window.electronAPI.dialog.selectFolder()
-
-// Sauvegarde
-const result = await window.electronAPI.backup.start()
+// ✅ Bon - streaming sans saturer la RAM
+fs.createReadStream(source)
+  .pipe(fs.createWriteStream(dest))
 ```
-
-### Sécurité
-- `contextIsolation: true` - Isolation du contexte renderer
-- `sandbox: true` - Sandbox activé
-- `nodeIntegration: false` - Pas d'accès Node direct
 
 ---
 
-## 🎨 Design System
+## ⚠️ Gestion des erreurs : Soft Fail
 
-### Couleurs (Tailwind)
-| Token | Usage |
-|-------|-------|
-| `primary-*` | Actions principales (bleu) |
-| `success-*` | État OK (vert) |
-| `warning-*` | Attention requise (orange) |
-| `dark-*` | Thème sombre (fond, texte) |
+Les fichiers verrouillés (ouverts dans Excel, Word, etc.) ne bloquent **pas** la sauvegarde :
 
-### Animations
-- `progress-shimmer` : Effet brillant sur la barre de progression
-- Transitions 200ms sur tous les boutons
+| Erreur | Comportement |
+|--------|--------------|
+| `EBUSY` | Fichier verrouillé → ignoré |
+| `EACCES` | Accès refusé → ignoré |
+| `ENOENT` | Fichier supprimé pendant la copie → ignoré |
+
+Un **rapport d'erreurs** est affiché à la fin listant tous les fichiers ignorés.
+
+---
+
+## 💾 Persistance (electron-store)
+
+```typescript
+// Données sauvegardées
+{
+  sources: [
+    { path: "C:\\Users\\Papa\\Travail", name: "Travail" }
+  ],
+  lastBackupDate: "2026-01-02T14:00:00.000Z",
+  preferences: {
+    autoBackupOnUSB: true
+  }
+}
+```
+
+---
+
+## 📊 Progression en temps réel
+
+```
+[██████████░░░░░░░░░░] 47%  
+Copie : Documents/Factures/facture_2024.pdf
+1.2 Go / 2.5 Go • 3 minutes restantes
+```
+
+---
+
+## 🔌 Nouvelles méthodes IPC
+
+```typescript
+// Lancer une sauvegarde
+await window.electronAPI.backup.start(sources, destination)
+
+// Écouter la progression
+window.electronAPI.backup.onProgress((data) => {
+  console.log(data.percent, data.currentFile)
+})
+
+// Pause / Annulation
+window.electronAPI.backup.pause()
+window.electronAPI.backup.cancel()
+
+// Persistance
+await window.electronAPI.store.get('sources')
+await window.electronAPI.store.set('sources', [...])
+```
 
 ---
 
@@ -130,16 +131,14 @@ const result = await window.electronAPI.backup.start()
 
 | Commande | Description |
 |----------|-------------|
-| `npm run dev` | Lance le serveur de dev avec hot-reload |
+| `npm run dev` | Lance le serveur de dev |
 | `npm run build` | Build de production |
-| `npm run preview` | Preview du build |
 | `npm run typecheck` | Vérification TypeScript |
 
 ---
 
-## 🔄 Prochaine étape : Phase 2
+## 🔄 Prochaine étape : Phase 3
 
-La Phase 2 implémentera la logique locale :
-- Sélection réelle des dossiers
-- Algorithme de copie avec fs streams
-- Gestion des erreurs (fichiers verrouillés)
+La Phase 3 implémentera l'intégration USB :
+- Détection automatique des périphériques
+- Déclenchement de la sauvegarde au branchement
