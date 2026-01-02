@@ -36,7 +36,7 @@ class UsbService extends EventEmitter {
                 { encoding: 'utf8' }
             )
 
-            console.log('[UsbService] PowerShell output:', stdout.substring(0, 200))
+
 
             const rawDrives = JSON.parse(stdout || '[]')
             const drivesArray = Array.isArray(rawDrives) ? rawDrives : [rawDrives]
@@ -58,7 +58,7 @@ class UsbService extends EventEmitter {
                     isReady: d.Size !== null && d.Size > 0,
                 }))
 
-            console.log('[UsbService] Lecteurs détectés:', drives.map((d) => `${d.letter} (${d.type})`).join(', '))
+
             return drives
         } catch (error) {
             console.error('[UsbService] Erreur lors de la liste des lecteurs:', error)
@@ -88,7 +88,7 @@ class UsbService extends EventEmitter {
         if (this.isWatching) return
 
         this.isWatching = true
-        console.log('[UsbService] Démarrage de la surveillance USB...')
+
 
         // Initialiser la liste des lecteurs
         this.listDrives().then((drives) => {
@@ -131,7 +131,7 @@ class UsbService extends EventEmitter {
             this.pollingInterval = null
         }
         this.isWatching = false
-        console.log('[UsbService] Surveillance USB arrêtée')
+
     }
 
     /**
