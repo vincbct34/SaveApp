@@ -50,7 +50,7 @@ export default function ScheduleManager({
         try {
             const loaded = await window.electronAPI.scheduler.getSchedules()
             setSchedules(loaded)
-        } catch (error) {
+        } catch {
             toast.error('Erreur lors du chargement des tâches')
         }
     }
@@ -88,7 +88,7 @@ export default function ScheduleManager({
             }
             setEditingSchedule(null)
             loadSchedules()
-        } catch (error) {
+        } catch {
             toast.error('Erreur lors de la sauvegarde')
         }
     }
@@ -98,7 +98,7 @@ export default function ScheduleManager({
             await window.electronAPI.scheduler.removeSchedule(id)
             toast.success('Tâche supprimée')
             loadSchedules()
-        } catch (error) {
+        } catch {
             toast.error('Erreur lors de la suppression')
         }
     }

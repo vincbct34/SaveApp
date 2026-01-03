@@ -30,7 +30,7 @@ class LoggerService {
         level: LogLevel,
         source: string,
         message: string,
-        ...args: any[]
+        ...args: unknown[]
     ): string {
         const timestamp = new Date().toISOString()
         const formattedArgs = args
@@ -46,7 +46,7 @@ class LoggerService {
         return `[${timestamp}] [${level.toUpperCase()}] [${source}] ${message} ${formattedArgs}`
     }
 
-    private log(level: LogLevel, source: string, message: string, ...args: any[]) {
+    private log(level: LogLevel, source: string, message: string, ...args: unknown[]) {
         if (LEVELS[level] < this.minLevel) return
 
         const formattedMessage = this.formatMessage(level, source, message, ...args)
@@ -73,19 +73,19 @@ class LoggerService {
         }
     }
 
-    debug(source: string, message: string, ...args: any[]) {
+    debug(source: string, message: string, ...args: unknown[]) {
         this.log('debug', source, message, ...args)
     }
 
-    info(source: string, message: string, ...args: any[]) {
+    info(source: string, message: string, ...args: unknown[]) {
         this.log('info', source, message, ...args)
     }
 
-    warn(source: string, message: string, ...args: any[]) {
+    warn(source: string, message: string, ...args: unknown[]) {
         this.log('warn', source, message, ...args)
     }
 
-    error(source: string, message: string, ...args: any[]) {
+    error(source: string, message: string, ...args: unknown[]) {
         this.log('error', source, message, ...args)
     }
 }
