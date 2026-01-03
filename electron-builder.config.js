@@ -10,6 +10,10 @@ module.exports = {
             from: 'google-credentials.json',
             to: 'google-credentials.json',
         },
+        {
+            from: 'resources/icon.png',
+            to: 'icon.png',
+        },
     ],
     files: [
         'dist/**/*',
