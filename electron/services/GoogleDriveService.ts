@@ -971,10 +971,10 @@ class GoogleDriveService extends EventEmitter {
 
         return new Promise((resolve, reject) => {
             const dest = fs.createWriteStream(destPath)
-                ; (response.data as NodeJS.ReadableStream)
-                    .pipe(dest)
-                    .on('finish', resolve)
-                    .on('error', reject)
+            ;(response.data as NodeJS.ReadableStream)
+                .pipe(dest)
+                .on('finish', resolve)
+                .on('error', reject)
         })
     }
 }
