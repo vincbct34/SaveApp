@@ -320,6 +320,14 @@ function setupIpcHandlers(): void {
         googleDriveService.cancel()
     })
 
+    ipcMain.on('cloud:pause', () => {
+        googleDriveService.pause()
+    })
+
+    ipcMain.on('cloud:resume', () => {
+        googleDriveService.resume()
+    })
+
     ipcMain.handle('cloud:listBackups', async () => {
         return await googleDriveService.listBackups()
     })

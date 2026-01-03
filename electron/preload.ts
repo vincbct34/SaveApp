@@ -255,6 +255,12 @@ const electronAPI = {
         cancel: () =>
             ipcRenderer.send('cloud:cancel'),
 
+        pause: () =>
+            ipcRenderer.send('cloud:pause'),
+
+        resume: () =>
+            ipcRenderer.send('cloud:resume'),
+
         onProgress: (callback: (progress: CloudUploadProgress) => void) => {
             const handler = (_event: Electron.IpcRendererEvent, progress: CloudUploadProgress) =>
                 callback(progress)

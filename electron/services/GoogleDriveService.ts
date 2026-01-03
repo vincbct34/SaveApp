@@ -85,6 +85,8 @@ class GoogleDriveService extends EventEmitter {
     private credentials: GoogleCredentials | null = null
     private backupFolderId: string | null = null
     private isCancelled = false
+    private isPaused = false
+    private pausePromiseResolve: (() => void) | null = null
 
     /**
      * Charge les credentials depuis le fichier de configuration
@@ -551,6 +553,39 @@ class GoogleDriveService extends EventEmitter {
      */
     cancel(): void {
         this.isCancelled = true
+        // Si on est en pause, on débloque pour permettre l'annulation
+        if (this.pausePromiseResolve) {
+            this.pausePromiseResolve()
+        }
+    }
+
+    /**
+     * Met en pause l'upload
+     */
+    pause(): void {
+        this.isPaused = true
+    }
+
+    /**
+     * Reprend l'upload
+     */
+    resume(): void {
+        this.isPaused = false
+        if (this.pausePromiseResolve) {
+            this.pausePromiseResolve()
+            this.pausePromiseResolve = null
+        }
+    }
+
+    /**
+     * Vérifie si en pause et attend si nécessaire
+     */
+    private async waitIfPaused(): Promise<void> {
+        if (!this.isPaused) return
+
+        return new Promise((resolve) => {
+            this.pausePromiseResolve = resolve
+        })
     }
 
     /**
@@ -558,6 +593,7 @@ class GoogleDriveService extends EventEmitter {
      */
     async uploadSource(source: SourceConfig): Promise<CloudSyncResult> {
         this.isCancelled = false
+        this.isPaused = false
         const startTime = Date.now()
         const errors: Array<{ file: string; error: string }> = []
         let filesUploaded = 0
@@ -654,6 +690,10 @@ class GoogleDriveService extends EventEmitter {
             console.log(`[GoogleDrive] ${remoteFilesMap.size} fichiers distants trouvés`)
 
             for (const file of filesToUpload) {
+                if (this.isCancelled) break
+
+                // Attendre si en pause
+                await this.waitIfPaused()
                 if (this.isCancelled) break
 
                 // Déterminer le dossier parent

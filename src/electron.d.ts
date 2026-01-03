@@ -155,6 +155,8 @@ export interface ElectronAPI {
         getUser: () => Promise<GoogleUserInfo | null>
         upload: (source: SourceConfig) => Promise<CloudSyncResult>
         cancel: () => void
+        pause: () => void
+        resume: () => void
         onProgress: (callback: (progress: CloudUploadProgress) => void) => () => void
         listBackups: () => Promise<BackupInfo[]>
         restore: (backupId: string, destPath: string) => Promise<RestoreResult>

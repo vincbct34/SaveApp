@@ -67,6 +67,7 @@ function App() {
     const [showErrorReport, setShowErrorReport] = useState(false)
     const [showScheduleManager, setShowScheduleManager] = useState(false)
     const [showRestoreModal, setShowRestoreModal] = useState(false)
+    const isCloudBackupRef = useRef(false)
 
     // Sources et destinations
 
@@ -533,6 +534,7 @@ function App() {
         // ÉTAPE 2 : Vérifier la destination sélectionnée
         const selectedDest = destinations.find((d) => d.id === selectedDestinationId && d.available)
         const isCloudBackup = selectedDest?.type === 'cloud'
+        isCloudBackupRef.current = isCloudBackup
         let destinationPath: string | null = null
 
         // Priorité 1 : Destination définie par l'auto-backup (via ref pour contourner l'async state)
@@ -631,11 +633,19 @@ function App() {
         if (!window.electronAPI) return
 
         if (isPaused) {
-            window.electronAPI.backup.resume()
+            if (isCloudBackupRef.current) {
+                window.electronAPI.cloud.resume()
+            } else {
+                window.electronAPI.backup.resume()
+            }
             setIsPaused(false)
             toast('Sauvegarde reprise', { id: 'backup-resume' })
         } else {
-            window.electronAPI.backup.pause()
+            if (isCloudBackupRef.current) {
+                window.electronAPI.cloud.pause()
+            } else {
+                window.electronAPI.backup.pause()
+            }
             setIsPaused(true)
             toast('Sauvegarde en pause', { id: 'backup-pause' })
         }
@@ -647,7 +657,11 @@ function App() {
     const handleCancelBackup = useCallback(() => {
         if (!window.electronAPI) return
 
-        window.electronAPI.backup.cancel()
+        if (isCloudBackupRef.current) {
+            window.electronAPI.cloud.cancel()
+        } else {
+            window.electronAPI.backup.cancel()
+        }
         setIsBackingUp(false)
         setIsPaused(false)
         setProgress(null)
