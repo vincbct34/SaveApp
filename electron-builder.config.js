@@ -12,6 +12,10 @@ module.exports = {
         '!**/*.map',
         'package.json',
     ],
+    publish: {
+        provider: 'github',
+        releaseType: 'release',
+    },
     win: {
         target: 'nsis',
         icon: 'resources/icon.png',

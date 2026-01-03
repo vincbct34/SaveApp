@@ -2,12 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.1] - 2026-01-03
+## [1.0.0] - 2026-01-03
 
 ### Fixed
 - **CI/CD:** Fixed release workflow permissions (403 Forbidden).
 
-## [1.1.0] - 2026-01-03
+## [0.2.0] - 2026-01-03
 
 ### Added
 - **Cloud Backup:**
