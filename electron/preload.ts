@@ -78,9 +78,28 @@ export interface CloudUploadProgress {
 export interface CloudSyncResult {
     success: boolean
     filesUploaded: number
+    filesSkipped: number
     bytesTransferred: number
     errors: Array<{ file: string; error: string }>
     duration: number
+}
+
+export interface BackupInfo {
+    id: string
+    name: string
+    modifiedTime: string
+}
+
+export interface RestoreResult {
+    success: boolean
+    filesDownloaded: number
+    errors: string[]
+}
+
+export interface RestoreProgress {
+    downloaded: number
+    total: number
+    currentFile: string
 }
 
 /**
@@ -241,6 +260,20 @@ const electronAPI = {
                 callback(progress)
             ipcRenderer.on('cloud:progress', handler)
             return () => ipcRenderer.removeListener('cloud:progress', handler)
+        },
+
+        // Restore
+        listBackups: () =>
+            ipcRenderer.invoke('cloud:listBackups') as Promise<BackupInfo[]>,
+
+        restore: (backupId: string, destPath: string) =>
+            ipcRenderer.invoke('cloud:restore', backupId, destPath) as Promise<RestoreResult>,
+
+        onRestoreProgress: (callback: (progress: RestoreProgress) => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, progress: RestoreProgress) =>
+                callback(progress)
+            ipcRenderer.on('cloud:restoreProgress', handler)
+            return () => ipcRenderer.removeListener('cloud:restoreProgress', handler)
         },
     },
 

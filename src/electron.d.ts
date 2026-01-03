@@ -77,9 +77,28 @@ export interface CloudUploadProgress {
 export interface CloudSyncResult {
     success: boolean
     filesUploaded: number
+    filesSkipped: number
     bytesTransferred: number
     errors: Array<{ file: string; error: string }>
     duration: number
+}
+
+export interface BackupInfo {
+    id: string
+    name: string
+    modifiedTime: string
+}
+
+export interface RestoreResult {
+    success: boolean
+    filesDownloaded: number
+    errors: string[]
+}
+
+export interface RestoreProgress {
+    downloaded: number
+    total: number
+    currentFile: string
 }
 
 export interface ElectronAPI {
@@ -137,6 +156,9 @@ export interface ElectronAPI {
         upload: (source: SourceConfig) => Promise<CloudSyncResult>
         cancel: () => void
         onProgress: (callback: (progress: CloudUploadProgress) => void) => () => void
+        listBackups: () => Promise<BackupInfo[]>
+        restore: (backupId: string, destPath: string) => Promise<RestoreResult>
+        onRestoreProgress: (callback: (progress: RestoreProgress) => void) => () => void
     }
     app: {
         getVersion: () => Promise<string>

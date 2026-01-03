@@ -7,6 +7,7 @@ import DestinationsList from './components/DestinationsList/DestinationsList'
 import ProgressBar from './components/ProgressBar/ProgressBar'
 import ErrorReport from './components/ErrorReport/ErrorReport'
 import ScheduleManager from './components/ScheduleManager/ScheduleManager'
+import RestoreModal from './components/RestoreModal/RestoreModal'
 
 /**
  * Types pour les sources et destinations
@@ -65,6 +66,7 @@ function App() {
     const [lastResult, setLastResult] = useState<SyncResult | null>(null)
     const [showErrorReport, setShowErrorReport] = useState(false)
     const [showScheduleManager, setShowScheduleManager] = useState(false)
+    const [showRestoreModal, setShowRestoreModal] = useState(false)
 
     // Sources et destinations
 
@@ -582,7 +584,13 @@ function App() {
                         id: `backup-error-${source.id}`,
                     })
                 } else {
-                    toast.success(isCloudBackup ? `Upload terminé : ${source.name}` : `Sauvegarde terminée : ${source.name}`, {
+                    const skippedCount = 'filesSkipped' in result ? result.filesSkipped : 0
+                    const skippedInfo = isCloudBackup && skippedCount > 0
+                        ? ` (${skippedCount} inchangés)`
+                        : ''
+                    toast.success(isCloudBackup
+                        ? `Upload terminé : ${source.name}${skippedInfo}`
+                        : `Sauvegarde terminée : ${source.name}`, {
                         id: `backup-success-${source.id}`,
                     })
                 }
@@ -691,6 +699,7 @@ function App() {
                             isCloudConnecting={isCloudConnecting}
                             onCloudConnect={handleCloudConnect}
                             onCloudDisconnect={handleCloudDisconnect}
+                            onOpenRestore={() => setShowRestoreModal(true)}
                         />
                     </div>
                 </div>
@@ -709,6 +718,11 @@ function App() {
                 onClose={() => setShowScheduleManager(false)}
                 sources={sources}
                 destinations={destinations}
+            />
+
+            <RestoreModal
+                isOpen={showRestoreModal}
+                onClose={() => setShowRestoreModal(false)}
             />
         </div>
     )

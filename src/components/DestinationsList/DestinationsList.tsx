@@ -21,6 +21,7 @@ interface DestinationsListProps {
     isCloudConnecting: boolean
     onCloudConnect: () => void
     onCloudDisconnect: () => void
+    onOpenRestore: () => void
 }
 
 /**
@@ -38,6 +39,7 @@ function DestinationsList({
     isCloudConnecting,
     onCloudConnect,
     onCloudDisconnect,
+    onOpenRestore,
 }: DestinationsListProps) {
     /**
      * Retourne l'icône correspondant au type de destination
@@ -186,6 +188,18 @@ function DestinationsList({
                                                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                                                 Connecté
                                             </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    onOpenRestore()
+                                                }}
+                                                className="p-1.5 rounded-lg text-dark-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                                                title="Restaurer depuis le cloud"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                </svg>
+                                            </button>
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation()

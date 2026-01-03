@@ -320,6 +320,31 @@ function setupIpcHandlers(): void {
         googleDriveService.cancel()
     })
 
+    ipcMain.handle('cloud:listBackups', async () => {
+        return await googleDriveService.listBackups()
+    })
+
+    ipcMain.handle('cloud:restore', async (_event, backupId: string, destPath: string) => {
+        const progressHandler = (progress: { downloaded: number; total: number; currentFile: string }): void => {
+            mainWindow?.webContents.send('cloud:restoreProgress', progress)
+        }
+
+        const result = await googleDriveService.downloadBackup(backupId, destPath, progressHandler)
+
+        // Notification native
+        if (Notification.isSupported()) {
+            new Notification({
+                title: result.success ? 'Restauration terminée' : 'Restauration avec erreurs',
+                body: result.success
+                    ? `${result.filesDownloaded} fichiers restaurés.`
+                    : `Restauration terminée avec ${result.errors.length} erreurs.`,
+                silent: false
+            }).show()
+        }
+
+        return result
+    })
+
     // === Application ===
 
     ipcMain.handle('app:getVersion', () => {

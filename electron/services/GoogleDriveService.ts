@@ -60,6 +60,7 @@ export interface CloudUploadProgress {
 export interface CloudSyncResult {
     success: boolean
     filesUploaded: number
+    filesSkipped: number
     bytesTransferred: number
     errors: Array<{ file: string; error: string }>
     duration: number
@@ -436,38 +437,47 @@ class GoogleDriveService extends EventEmitter {
     }
 
     /**
-     * Upload un fichier vers Google Drive
-     * Note: Le tracking de progression par fichier est désactivé pour éviter les erreurs de stream
+     * Upload un fichier vers Google Drive avec tracking de progression
      */
     private async uploadFile(
         localPath: string,
         fileName: string,
         parentId: string,
-        _onProgress?: (bytes: number) => void
-    ): Promise<{ success: boolean; error?: string }> {
+        onProgress?: (bytes: number) => void,
+        existingFileId?: string,
+        remoteHash?: string
+    ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
         if (!this.drive) {
             return { success: false, error: 'Client Drive non initialisé' }
         }
 
         try {
+            // Si on a un hash distant, comparer avec le hash local (sync incrémentale)
+            if (remoteHash) {
+                const localHash = await this.computeFileMD5(localPath)
+                if (localHash === remoteHash) {
+                    return { success: true, skipped: true }
+                }
+            }
 
-            // Vérifier si le fichier existe déjà AVANT de créer le stream
-            const existingFiles = await this.drive.files.list({
-                q: `name='${fileName}' and '${parentId}' in parents and trashed=false`,
-                fields: 'files(id)',
-            })
-
-            // Créer le stream APRÈS la vérification
+            // Créer le stream pour l'upload
             const fileStream = fs.createReadStream(localPath)
 
-            if (existingFiles.data.files && existingFiles.data.files.length > 0) {
+            // Configuration avec callback de progression
+            const config = {
+                onUploadProgress: (evt: { bytesRead: number }) => {
+                    onProgress?.(evt.bytesRead)
+                }
+            }
+
+            if (existingFileId) {
                 // Mettre à jour le fichier existant
                 await this.drive.files.update({
-                    fileId: existingFiles.data.files[0].id!,
+                    fileId: existingFileId,
                     media: {
                         body: fileStream,
                     },
-                })
+                }, config)
             } else {
                 // Créer un nouveau fichier
                 await this.drive.files.create({
@@ -478,7 +488,7 @@ class GoogleDriveService extends EventEmitter {
                     media: {
                         body: fileStream,
                     },
-                })
+                }, config)
             }
 
             return { success: true }
@@ -489,6 +499,51 @@ class GoogleDriveService extends EventEmitter {
                 error: error instanceof Error ? error.message : 'Erreur upload',
             }
         }
+    }
+
+    /**
+     * Calcule le hash MD5 d'un fichier local
+     */
+    private async computeFileMD5(filePath: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const hash = require('crypto').createHash('md5')
+            const stream = fs.createReadStream(filePath)
+            stream.on('data', (data: Buffer) => hash.update(data))
+            stream.on('end', () => resolve(hash.digest('hex')))
+            stream.on('error', reject)
+        })
+    }
+
+    /**
+     * Récupère la map des fichiers distants avec leurs hashs MD5
+     */
+    private async getRemoteFilesMap(folderId: string, basePath: string = ''): Promise<Map<string, { id: string; md5: string }>> {
+        const map = new Map<string, { id: string; md5: string }>()
+        if (!this.drive) return map
+
+        try {
+            const response = await this.drive.files.list({
+                q: `'${folderId}' in parents and trashed=false`,
+                fields: 'files(id, name, md5Checksum, mimeType)',
+                pageSize: 1000,
+            })
+
+            for (const file of response.data.files || []) {
+                const relativePath = basePath ? `${basePath}/${file.name}` : file.name!
+
+                if (file.mimeType === 'application/vnd.google-apps.folder') {
+                    // Récursion pour les sous-dossiers
+                    const subMap = await this.getRemoteFilesMap(file.id!, relativePath)
+                    subMap.forEach((value, key) => map.set(key, value))
+                } else if (file.md5Checksum) {
+                    map.set(relativePath, { id: file.id!, md5: file.md5Checksum })
+                }
+            }
+        } catch (error) {
+            console.error('[GoogleDrive] Erreur getRemoteFilesMap:', error)
+        }
+
+        return map
     }
 
     /**
@@ -506,6 +561,7 @@ class GoogleDriveService extends EventEmitter {
         const startTime = Date.now()
         const errors: Array<{ file: string; error: string }> = []
         let filesUploaded = 0
+        let filesSkipped = 0
         let bytesTransferred = 0
 
         try {
@@ -514,6 +570,7 @@ class GoogleDriveService extends EventEmitter {
                 return {
                     success: false,
                     filesUploaded: 0,
+                    filesSkipped: 0,
                     bytesTransferred: 0,
                     errors: [{ file: '', error: 'Non authentifié' }],
                     duration: Date.now() - startTime,
@@ -526,6 +583,7 @@ class GoogleDriveService extends EventEmitter {
                     return {
                         success: false,
                         filesUploaded: 0,
+                        filesSkipped: 0,
                         bytesTransferred: 0,
                         errors: [{ file: '', error: 'Impossible d\'initialiser le client' }],
                         duration: Date.now() - startTime,
@@ -540,6 +598,7 @@ class GoogleDriveService extends EventEmitter {
                 return {
                     success: false,
                     filesUploaded: 0,
+                    filesSkipped: 0,
                     bytesTransferred: 0,
                     errors: [{ file: '', error: 'Impossible de créer le dossier de backup' }],
                     duration: Date.now() - startTime,
@@ -552,6 +611,7 @@ class GoogleDriveService extends EventEmitter {
                 return {
                     success: false,
                     filesUploaded: 0,
+                    filesSkipped: 0,
                     bytesTransferred: 0,
                     errors: [{ file: '', error: 'Impossible de créer le dossier source' }],
                     duration: Date.now() - startTime,
@@ -587,6 +647,11 @@ class GoogleDriveService extends EventEmitter {
             // Map pour stocker les IDs des dossiers créés
             const folderIdCache = new Map<string, string>()
             folderIdCache.set('', sourceFolderId)
+
+            // Phase 3.5: Charger la map des fichiers distants pour sync incrémentale
+            console.log('[GoogleDrive] Chargement des fichiers distants pour sync incrémentale...')
+            const remoteFilesMap = await this.getRemoteFilesMap(sourceFolderId)
+            console.log(`[GoogleDrive] ${remoteFilesMap.size} fichiers distants trouvés`)
 
             for (const file of filesToUpload) {
                 if (this.isCancelled) break
@@ -627,6 +692,10 @@ class GoogleDriveService extends EventEmitter {
                     percent: Math.round((filesUploaded / filesToUpload.length) * 100),
                 })
 
+                // Chercher le fichier distant pour sync incrémentale
+                const remoteKey = file.relativePath.replace(/\\/g, '/')
+                const remoteFile = remoteFilesMap.get(remoteKey)
+
                 const result = await this.uploadFile(
                     file.path,
                     path.basename(file.path),
@@ -641,11 +710,17 @@ class GoogleDriveService extends EventEmitter {
                             currentFile: file.relativePath,
                             percent: Math.round(((bytesTransferred + bytes) / totalBytes) * 100),
                         })
-                    }
+                    },
+                    remoteFile?.id,
+                    remoteFile?.md5
                 )
 
                 if (result.success) {
-                    filesUploaded++
+                    if (result.skipped) {
+                        filesSkipped++
+                    } else {
+                        filesUploaded++
+                    }
                     bytesTransferred += file.size
                 } else {
                     errors.push({ file: file.relativePath, error: result.error || 'Erreur inconnue' })
@@ -666,6 +741,7 @@ class GoogleDriveService extends EventEmitter {
             return {
                 success: errors.length === 0,
                 filesUploaded,
+                filesSkipped,
                 bytesTransferred,
                 errors,
                 duration: Date.now() - startTime,
@@ -685,6 +761,7 @@ class GoogleDriveService extends EventEmitter {
             return {
                 success: false,
                 filesUploaded,
+                filesSkipped,
                 bytesTransferred,
                 errors: [{ file: '', error: error instanceof Error ? error.message : 'Erreur inconnue' }],
                 duration: Date.now() - startTime,
@@ -697,6 +774,158 @@ class GoogleDriveService extends EventEmitter {
      */
     private emitProgress(progress: CloudUploadProgress): void {
         this.emit('progress', progress)
+    }
+
+    // ========== RESTORE FUNCTIONALITY ==========
+
+    /**
+     * Liste les backups disponibles sur le Drive
+     */
+    async listBackups(): Promise<Array<{ id: string; name: string; modifiedTime: string }>> {
+        if (!this.drive) {
+            if (!this.initOAuth2Client()) return []
+            this.initDriveClient()
+            if (!this.drive) return []
+        }
+
+        try {
+            const backupFolderId = await this.ensureBackupFolder()
+            if (!backupFolderId) return []
+
+            const response = await this.drive.files.list({
+                q: `'${backupFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                fields: 'files(id, name, modifiedTime)',
+                orderBy: 'modifiedTime desc',
+            })
+
+            return (response.data.files || []).map(f => ({
+                id: f.id!,
+                name: f.name!,
+                modifiedTime: f.modifiedTime!,
+            }))
+        } catch (error) {
+            console.error('[GoogleDrive] Erreur listBackups:', error)
+            return []
+        }
+    }
+
+    /**
+     * Télécharge un backup complet vers un dossier local
+     */
+    async downloadBackup(
+        backupId: string,
+        destPath: string,
+        onProgress?: (progress: { downloaded: number; total: number; currentFile: string }) => void
+    ): Promise<{ success: boolean; filesDownloaded: number; errors: string[] }> {
+        if (!this.drive) {
+            return { success: false, filesDownloaded: 0, errors: ['Client non initialisé'] }
+        }
+
+        const errors: string[] = []
+        let filesDownloaded = 0
+
+        try {
+            // Lister tous les fichiers dans le backup
+            const files = await this.listAllFilesInFolder(backupId)
+            const totalFiles = files.length
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i]
+                onProgress?.({
+                    downloaded: i,
+                    total: totalFiles,
+                    currentFile: file.path,
+                })
+
+                try {
+                    const localPath = path.join(destPath, file.path)
+
+                    // Créer les dossiers parents
+                    await fs.promises.mkdir(path.dirname(localPath), { recursive: true })
+
+                    // Télécharger le fichier
+                    await this.downloadFile(file.id, localPath)
+                    filesDownloaded++
+                } catch (err) {
+                    errors.push(`${file.path}: ${err instanceof Error ? err.message : 'Erreur'}`)
+                }
+            }
+
+            onProgress?.({
+                downloaded: totalFiles,
+                total: totalFiles,
+                currentFile: '',
+            })
+
+            return {
+                success: errors.length === 0,
+                filesDownloaded,
+                errors,
+            }
+        } catch (error) {
+            console.error('[GoogleDrive] Erreur downloadBackup:', error)
+            return {
+                success: false,
+                filesDownloaded,
+                errors: [error instanceof Error ? error.message : 'Erreur inconnue'],
+            }
+        }
+    }
+
+    /**
+     * Liste récursivement tous les fichiers dans un dossier
+     */
+    private async listAllFilesInFolder(
+        folderId: string,
+        basePath: string = ''
+    ): Promise<Array<{ id: string; path: string }>> {
+        if (!this.drive) return []
+
+        const files: Array<{ id: string; path: string }> = []
+
+        try {
+            const response = await this.drive.files.list({
+                q: `'${folderId}' in parents and trashed=false`,
+                fields: 'files(id, name, mimeType)',
+                pageSize: 1000,
+            })
+
+            for (const file of response.data.files || []) {
+                const filePath = basePath ? `${basePath}/${file.name}` : file.name!
+
+                if (file.mimeType === 'application/vnd.google-apps.folder') {
+                    // Récursion pour les sous-dossiers
+                    const subFiles = await this.listAllFilesInFolder(file.id!, filePath)
+                    files.push(...subFiles)
+                } else {
+                    files.push({ id: file.id!, path: filePath })
+                }
+            }
+        } catch (error) {
+            console.error('[GoogleDrive] Erreur listAllFilesInFolder:', error)
+        }
+
+        return files
+    }
+
+    /**
+     * Télécharge un fichier depuis Google Drive
+     */
+    private async downloadFile(fileId: string, destPath: string): Promise<void> {
+        if (!this.drive) throw new Error('Client non initialisé')
+
+        const response = await this.drive.files.get(
+            { fileId, alt: 'media' },
+            { responseType: 'stream' }
+        )
+
+        return new Promise((resolve, reject) => {
+            const dest = fs.createWriteStream(destPath)
+                ; (response.data as NodeJS.ReadableStream)
+                    .pipe(dest)
+                    .on('finish', resolve)
+                    .on('error', reject)
+        })
     }
 }
 
