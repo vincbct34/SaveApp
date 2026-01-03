@@ -262,9 +262,24 @@ function App() {
             }
         })
 
-        // Écouter les événements de progression
+        // Écouter les événements de progression (backup local)
         const unsubProgress = window.electronAPI.backup.onProgress((prog) => {
             setProgress(prog)
+        })
+
+        // Écouter les événements de progression (cloud)
+        const unsubCloudProgress = window.electronAPI.cloud.onProgress((cloudProg) => {
+            // Convertir CloudUploadProgress en SyncProgress pour l'affichage unifié
+            setProgress({
+                phase: cloudProg.phase === 'uploading' ? 'copying' : cloudProg.phase,
+                totalFiles: cloudProg.totalFiles,
+                processedFiles: cloudProg.uploadedFiles,
+                totalBytes: cloudProg.totalBytes,
+                copiedBytes: cloudProg.uploadedBytes,
+                currentFile: cloudProg.currentFile,
+                percent: cloudProg.percent,
+                errors: [],
+            })
         })
 
         // Écouter les tâches planifiées
@@ -306,6 +321,7 @@ function App() {
             unsubConnected()
             unsubDisconnected()
             unsubProgress()
+            unsubCloudProgress()
             unsubScheduler()
             if (window.electronAPI) {
                 window.electronAPI.usb.stopWatching()
