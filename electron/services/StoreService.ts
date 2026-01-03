@@ -21,6 +21,39 @@ export interface DestinationConfig {
 }
 
 /**
+ * Structure d'une planification de sauvegarde
+ */
+export interface BackupSchedule {
+    id: string
+    name: string
+    frequency: 'daily' | 'weekly'
+    time: string // Format "HH:mm"
+    days: number[] // 0 (Dimanche) - 6 (Samedi), utilisé si frequency === 'weekly'
+    sourceIds: string[]
+    destinationId: string
+    enabled: boolean
+    lastRun: string | null
+}
+
+/**
+ * Tokens OAuth2 Google
+ */
+export interface GoogleTokens {
+    access_token: string
+    refresh_token: string
+    expiry_date: number
+}
+
+/**
+ * Informations utilisateur Google
+ */
+export interface GoogleUserInfo {
+    name: string
+    email: string
+    picture?: string
+}
+
+/**
  * Structure des préférences utilisateur
  */
 export interface UserPreferences {
@@ -38,6 +71,9 @@ interface StoreSchema {
     lastBackupDate: string | null
     preferences: UserPreferences
     autoBackupDriveIds: string[]
+    schedules: BackupSchedule[]
+    googleTokens: GoogleTokens | null
+    googleUserInfo: GoogleUserInfo | null
 }
 
 /**
@@ -52,6 +88,9 @@ const defaults: StoreSchema = {
         keepDeletedFiles: false,
     },
     autoBackupDriveIds: [],
+    schedules: [],
+    googleTokens: null,
+    googleUserInfo: null,
 }
 
 /**
@@ -108,6 +147,36 @@ class StoreService {
         this.store.set('autoBackupDriveIds', ids)
     }
 
+    // === Schedules ===
+
+    getSchedules(): BackupSchedule[] {
+        return this.store.get('schedules', [])
+    }
+
+    setSchedules(schedules: BackupSchedule[]): void {
+        this.store.set('schedules', schedules)
+    }
+
+    addSchedule(schedule: BackupSchedule): void {
+        const schedules = this.getSchedules()
+        schedules.push(schedule)
+        this.setSchedules(schedules)
+    }
+
+    updateSchedule(schedule: BackupSchedule): void {
+        const schedules = this.getSchedules()
+        const index = schedules.findIndex((s) => s.id === schedule.id)
+        if (index !== -1) {
+            schedules[index] = schedule
+            this.setSchedules(schedules)
+        }
+    }
+
+    removeSchedule(id: string): void {
+        const schedules = this.getSchedules().filter((s) => s.id !== id)
+        this.setSchedules(schedules)
+    }
+
     // === Dernière sauvegarde ===
 
     getLastBackupDate(): Date | null {
@@ -142,6 +211,29 @@ class StoreService {
 
     reset(): void {
         this.store.clear()
+    }
+
+    // === Google Drive ===
+
+    getGoogleTokens(): GoogleTokens | null {
+        return this.store.get('googleTokens', null)
+    }
+
+    setGoogleTokens(tokens: GoogleTokens): void {
+        this.store.set('googleTokens', tokens)
+    }
+
+    getGoogleUserInfo(): GoogleUserInfo | null {
+        return this.store.get('googleUserInfo', null)
+    }
+
+    setGoogleUserInfo(userInfo: GoogleUserInfo): void {
+        this.store.set('googleUserInfo', userInfo)
+    }
+
+    clearGoogleAuth(): void {
+        this.store.set('googleTokens', null)
+        this.store.set('googleUserInfo', null)
     }
 }
 

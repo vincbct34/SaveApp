@@ -1,11 +1,26 @@
 import type { Destination } from '../../App'
 
+/**
+ * Info utilisateur Google
+ */
+export interface GoogleUserInfo {
+    name: string
+    email: string
+    picture?: string
+}
+
 interface DestinationsListProps {
     destinations: Destination[]
     selectedId: string | null
     onSelectDestination: (id: string) => void
     autoBackupIds: Set<string>
     onToggleAutoBackup: (id: string) => void
+    // Cloud props
+    isCloudConnected: boolean
+    cloudUser: GoogleUserInfo | null
+    isCloudConnecting: boolean
+    onCloudConnect: () => void
+    onCloudDisconnect: () => void
 }
 
 /**
@@ -17,7 +32,12 @@ function DestinationsList({
     selectedId,
     onSelectDestination,
     autoBackupIds,
-    onToggleAutoBackup
+    onToggleAutoBackup,
+    isCloudConnected,
+    cloudUser,
+    isCloudConnecting,
+    onCloudConnect,
+    onCloudDisconnect,
 }: DestinationsListProps) {
     /**
      * Retourne l'icône correspondant au type de destination
@@ -52,7 +72,7 @@ function DestinationsList({
         switch (type) {
             case 'usb': return 'Disque externe'
             case 'nas': return 'NAS / Réseau'
-            case 'cloud': return 'Cloud'
+            case 'cloud': return 'Google Drive'
         }
     }
 
@@ -93,10 +113,99 @@ function DestinationsList({
             <div className="space-y-2">
                 {destinations.map((dest) => {
                     const isSelected = dest.id === selectedId
-                    const isClickable = dest.available
+                    const isCloud = dest.type === 'cloud'
+                    const isClickable = isCloud ? isCloudConnected : dest.available
                     const isAutoBackup = autoBackupIds.has(dest.id)
                     const isUsb = dest.type === 'usb'
 
+                    // Pour le cloud, on affiche une carte spéciale
+                    if (isCloud) {
+                        return (
+                            <div key={dest.id} className="group relative">
+                                <div
+                                    onClick={() => isCloudConnected && onSelectDestination(dest.id)}
+                                    className={`flex items-center gap-3 p-3 rounded-xl transition-all ${isCloudConnected ? 'cursor-pointer' : 'cursor-default'
+                                        } ${isSelected
+                                            ? 'bg-blue-500/10 border-2 border-blue-500/50'
+                                            : isCloudConnected
+                                                ? 'bg-dark-800/50 hover:bg-dark-800 border-2 border-transparent'
+                                                : 'bg-dark-800/20 border-2 border-transparent'
+                                        }`}
+                                >
+                                    {/* Radio button visuel (seulement si connecté) */}
+                                    {isCloudConnected && (
+                                        <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-colors ${isSelected ? 'bg-blue-500' : 'bg-dark-700 border-2 border-dark-500'
+                                            }`}>
+                                            {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                        </div>
+                                    )}
+
+                                    {/* Icône Google Drive */}
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isCloudConnected ? 'bg-blue-500/20 text-blue-400' : 'bg-dark-700 text-dark-500'
+                                        }`}>
+                                        {getIcon(dest.type)}
+                                    </div>
+
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-dark-200 truncate">
+                                            {isCloudConnected && cloudUser ? cloudUser.email : 'Google Drive'}
+                                        </p>
+                                        <p className="text-sm text-dark-500">{getTypeLabel(dest.type)}</p>
+                                    </div>
+
+                                    {/* Bouton Connect / Disconnect */}
+                                    {!isCloudConnected ? (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                onCloudConnect()
+                                            }}
+                                            disabled={isCloudConnecting}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isCloudConnecting ? (
+                                                <>
+                                                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                    </svg>
+                                                    Connexion...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                                                    </svg>
+                                                    Se connecter
+                                                </>
+                                            )}
+                                        </button>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                                Connecté
+                                            </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    onCloudDisconnect()
+                                                }}
+                                                className="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                                title="Se déconnecter"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    }
+
+                    // Carte standard pour USB/NAS
                     return (
                         <div key={dest.id} className="group relative">
                             <div
@@ -111,10 +220,10 @@ function DestinationsList({
                             >
                                 {/* Radio button visuel */}
                                 <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-colors ${isSelected
-                                        ? 'bg-success-500'
-                                        : dest.available
-                                            ? 'bg-dark-700 border-2 border-dark-500'
-                                            : 'bg-dark-800 border-2 border-dark-600'
+                                    ? 'bg-success-500'
+                                    : dest.available
+                                        ? 'bg-dark-700 border-2 border-dark-500'
+                                        : 'bg-dark-800 border-2 border-dark-600'
                                     }`}>
                                     {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
                                 </div>
@@ -131,8 +240,8 @@ function DestinationsList({
 
                                 {/* Indicateur de disponibilité */}
                                 <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${dest.available
-                                        ? 'bg-success-500/20 text-success-400'
-                                        : 'bg-dark-700 text-dark-500'
+                                    ? 'bg-success-500/20 text-success-400'
+                                    : 'bg-dark-700 text-dark-500'
                                     }`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${dest.available ? 'bg-success-400' : 'bg-dark-500'}`} />
                                     {dest.available ? 'Connecté' : 'Déconnecté'}
@@ -147,8 +256,8 @@ function DestinationsList({
                                         onToggleAutoBackup(dest.id)
                                     }}
                                     className={`absolute right-36 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors flex items-center gap-2 ${isAutoBackup
-                                            ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/50'
-                                            : 'bg-dark-700/50 text-dark-400 hover:bg-dark-700 hover:text-dark-200'
+                                        ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/50'
+                                        : 'bg-dark-700/50 text-dark-400 hover:bg-dark-700 hover:text-dark-200'
                                         }`}
                                     title={isAutoBackup ? "Désactiver la sauvegarde automatique" : "Activer la sauvegarde automatique au branchement"}
                                 >

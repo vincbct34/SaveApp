@@ -93,42 +93,42 @@ class UsbService extends EventEmitter {
         this.isWatching = true
 
 
-        // Initialiser la liste des lecteurs
+        // Initialiser la liste des lecteurs avant de commencer le polling
         this.listDrives().then((drives) => {
             if (drives) {
                 drives.forEach((d) => this.previousDrives.set(d.letter, d))
             }
+
+            // Démarrer le polling périodique une fois l'initialisation terminée
+            this.pollingInterval = setInterval(async () => {
+                const currentDrives = await this.listDrives()
+
+                // Si erreur (null), on ignore ce tour pour éviter les faux positifs de déconnexion
+                if (currentDrives === null) return
+
+                const currentMap = new Map<string, DriveInfo>(currentDrives.map((d) => [d.letter, d]))
+
+                // Détecter les nouveaux lecteurs
+                const currentEntries = Array.from(currentMap.entries())
+                for (const [letter, drive] of currentEntries) {
+                    if (!this.previousDrives.has(letter)) {
+                        console.log(`[UsbService] Nouveau lecteur détecté: ${letter} (${drive.label})`)
+                        this.emit('drive:connected', drive)
+                    }
+                }
+
+                // Détecter les lecteurs déconnectés
+                const previousEntries = Array.from(this.previousDrives.entries())
+                for (const [letter, drive] of previousEntries) {
+                    if (!currentMap.has(letter)) {
+                        console.log(`[UsbService] Lecteur déconnecté: ${letter} (${drive.label})`)
+                        this.emit('drive:disconnected', drive)
+                    }
+                }
+
+                this.previousDrives = currentMap
+            }, intervalMs)
         })
-
-        // Polling périodique
-        this.pollingInterval = setInterval(async () => {
-            const currentDrives = await this.listDrives()
-
-            // Si erreur (null), on ignore ce tour pour éviter les faux positifs de déconnexion
-            if (currentDrives === null) return
-
-            const currentMap = new Map<string, DriveInfo>(currentDrives.map((d) => [d.letter, d]))
-
-            // Détecter les nouveaux lecteurs
-            const currentEntries = Array.from(currentMap.entries())
-            for (const [letter, drive] of currentEntries) {
-                if (!this.previousDrives.has(letter)) {
-                    console.log(`[UsbService] Nouveau lecteur détecté: ${letter} (${drive.label})`)
-                    this.emit('drive:connected', drive)
-                }
-            }
-
-            // Détecter les lecteurs déconnectés
-            const previousEntries = Array.from(this.previousDrives.entries())
-            for (const [letter, drive] of previousEntries) {
-                if (!currentMap.has(letter)) {
-                    console.log(`[UsbService] Lecteur déconnecté: ${letter} (${drive.label})`)
-                    this.emit('drive:disconnected', drive)
-                }
-            }
-
-            this.previousDrives = currentMap
-        }, intervalMs)
     }
 
     /**

@@ -1,13 +1,17 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, Notification } from 'electron'
 import { join, dirname } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { syncService, SyncProgress, SyncResult } from './services/SyncService'
 import { storeService, SourceConfig } from './services/StoreService'
 import { calculateFolderSize } from './services/FileUtils'
 import { usbService, DriveInfo } from './services/UsbService'
+import { schedulerService, BackupSchedule } from './services/SchedulerService'
+import { googleDriveService, CloudUploadProgress } from './services/GoogleDriveService'
 
 // Référence à la fenêtre principale pour envoyer les événements
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
 
 /**
  * Crée la fenêtre principale de l'application
@@ -53,15 +57,24 @@ function createWindow(): void {
             mainWindow?.maximize()
         }
     })
-    ipcMain.on('window:close', () => mainWindow?.close())
+    ipcMain.on('window:close', () => {
+        if (mainWindow) {
+            mainWindow.hide()
+        }
+    })
 
     ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized())
 
     mainWindow.on('maximize', () => {
         mainWindow?.webContents.send('window:maximized-changed', true)
     })
-    mainWindow.on('unmaximize', () => {
-        mainWindow?.webContents.send('window:maximized-changed', false)
+    mainWindow.on('close', (event) => {
+        if (!isQuitting) {
+            event.preventDefault()
+            mainWindow?.hide()
+            return false
+        }
+        return true
     })
 }
 
@@ -133,6 +146,18 @@ function setupIpcHandlers(): void {
             try {
                 const result: SyncResult = await syncService.sync(source, destinationPath)
                 console.log('✅ [SaveApp] Sauvegarde terminée:', result)
+
+                // Notification native
+                if (Notification.isSupported()) {
+                    new Notification({
+                        title: result.success ? 'Sauvegarde terminée' : 'Sauvegarde terminée avec erreurs',
+                        body: result.success
+                            ? `Sauvegarde de "${source.name}" réussie.`
+                            : `Sauvegarde de "${source.name}" terminée avec ${result.errors.length} erreurs.`,
+                        silent: false
+                    }).show()
+                }
+
                 return result
             } finally {
                 syncService.off('progress', progressHandler)
@@ -192,6 +217,27 @@ function setupIpcHandlers(): void {
         return true
     })
 
+    // === Scheduler ===
+
+    ipcMain.handle('scheduler:getSchedules', () => {
+        return storeService.getSchedules()
+    })
+
+    ipcMain.handle('scheduler:addSchedule', (_event, schedule: BackupSchedule) => {
+        storeService.addSchedule(schedule)
+        return true
+    })
+
+    ipcMain.handle('scheduler:updateSchedule', (_event, schedule: BackupSchedule) => {
+        storeService.updateSchedule(schedule)
+        return true
+    })
+
+    ipcMain.handle('scheduler:removeSchedule', (_event, id: string) => {
+        storeService.removeSchedule(id)
+        return true
+    })
+
     // === USB Detection ===
 
     ipcMain.handle('usb:getDrives', async () => {
@@ -219,6 +265,61 @@ function setupIpcHandlers(): void {
         usbService.stopWatching()
     })
 
+    // === Cloud (Google Drive) ===
+
+    ipcMain.handle('cloud:hasCredentials', () => {
+        return googleDriveService.hasCredentials()
+    })
+
+    ipcMain.handle('cloud:isConnected', () => {
+        return googleDriveService.isAuthenticated()
+    })
+
+    ipcMain.handle('cloud:connect', async () => {
+        return await googleDriveService.authenticate()
+    })
+
+    ipcMain.handle('cloud:disconnect', async () => {
+        await googleDriveService.logout()
+    })
+
+    ipcMain.handle('cloud:getUser', () => {
+        return storeService.getGoogleUserInfo()
+    })
+
+    ipcMain.handle('cloud:upload', async (_event, source: SourceConfig) => {
+        // Écouter les événements de progression
+        const progressHandler = (progress: CloudUploadProgress): void => {
+            mainWindow?.webContents.send('cloud:progress', progress)
+        }
+
+        googleDriveService.on('progress', progressHandler)
+
+        try {
+            const result = await googleDriveService.uploadSource(source)
+            console.log('☁️ [SaveApp] Upload cloud terminé:', result)
+
+            // Notification native
+            if (Notification.isSupported()) {
+                new Notification({
+                    title: result.success ? 'Upload terminé' : 'Upload terminé avec erreurs',
+                    body: result.success
+                        ? `Sauvegarde cloud de "${source.name}" réussie.`
+                        : `Upload de "${source.name}" terminé avec ${result.errors.length} erreurs.`,
+                    silent: false
+                }).show()
+            }
+
+            return result
+        } finally {
+            googleDriveService.off('progress', progressHandler)
+        }
+    })
+
+    ipcMain.on('cloud:cancel', () => {
+        googleDriveService.cancel()
+    })
+
     // === Application ===
 
     ipcMain.handle('app:getVersion', () => {
@@ -229,6 +330,13 @@ function setupIpcHandlers(): void {
 // Initialisation
 app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.saveapp')
+
+    // Démarrer le scheduler
+    schedulerService.start()
+    schedulerService.on('schedule:due', (schedule: BackupSchedule) => {
+        console.log(`[Main] Schedule due: ${schedule.name}`)
+        mainWindow?.webContents.send('scheduler:run', schedule)
+    })
 
     app.on('browser-window-created', (_, window) => {
         optimizer.watchWindowShortcuts(window)
@@ -242,10 +350,39 @@ app.whenReady().then(() => {
             createWindow()
         }
     })
+
+    // Création du Tray
+    const iconPath = join(__dirname, '../../resources/icon.png') // A adapter selon ton projet
+    // Pour l'instant on utilise une icône par défaut si pas présente, ou on génère une empty image
+    const icon = nativeImage.createEmpty() // Placeholder
+
+    tray = new Tray(icon)
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: 'Ouvrir SaveApp',
+            click: () => mainWindow?.show()
+        },
+        { type: 'separator' },
+        {
+            label: 'Quitter',
+            click: () => {
+                isQuitting = true
+                app.quit()
+            }
+        }
+    ])
+    tray.setToolTip('SaveApp - Sauvegarde Automatique')
+    tray.setContextMenu(contextMenu)
+
+    tray.on('double-click', () => {
+        mainWindow?.show()
+    })
 })
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit()
+    // Ne pas quitter l'app si toutes les fenêtres sont fermées (mode tray)
+    // Sauf si c'est macOS où c'est le comportement standard
+    if (process.platform === 'darwin') {
+        // Sur mac on ne quitte pas non plus
     }
 })

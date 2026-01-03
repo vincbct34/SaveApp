@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Toaster, toast } from 'sonner'
 import TitleBar from './components/TitleBar/TitleBar'
 import Dashboard from './components/Dashboard/Dashboard'
 import SourcesList from './components/SourcesList/SourcesList'
 import DestinationsList from './components/DestinationsList/DestinationsList'
 import ProgressBar from './components/ProgressBar/ProgressBar'
 import ErrorReport from './components/ErrorReport/ErrorReport'
+import ScheduleManager from './components/ScheduleManager/ScheduleManager'
 
 /**
  * Types pour les sources et destinations
@@ -45,6 +47,12 @@ export interface SyncResult {
     duration: number
 }
 
+export interface GoogleUserInfo {
+    name: string
+    email: string
+    picture?: string
+}
+
 /**
  * Composant principal de l'application SaveApp
  */
@@ -56,9 +64,13 @@ function App() {
     const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null)
     const [lastResult, setLastResult] = useState<SyncResult | null>(null)
     const [showErrorReport, setShowErrorReport] = useState(false)
+    const [showScheduleManager, setShowScheduleManager] = useState(false)
+
+    // Sources et destinations
 
     // Sources et destinations
     const [sources, setSources] = useState<SourceFolder[]>([])
+    const [isAddingSource, setIsAddingSource] = useState(false) // Loader pour l'ajout de source
     const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set())
     const [destinations, setDestinations] = useState<Destination[]>([
         { id: 'nas', type: 'nas', name: 'NAS Synology', path: '\\\\NAS\\Backups', available: false },
@@ -67,17 +79,28 @@ function App() {
     const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null)
     const [autoBackupDriveIds, setAutoBackupDriveIds] = useState<Set<string>>(new Set())
 
+    // Cloud state
+    const [isCloudConnected, setIsCloudConnected] = useState(false)
+    const [isCloudConnecting, setIsCloudConnecting] = useState(false)
+    const [cloudUser, setCloudUser] = useState<GoogleUserInfo | null>(null)
+
     // Ref pour savoir si le chargement initial est fait
     const hasLoadedRef = useRef(false)
 
     // Refs pour la logique d'auto-backup (accessibles dans les closures)
     const isBackingUpRef = useRef(false)
     const lastAutoBackupDriveIdRef = useRef<string | null>(null)
+    const autoBackupDestinationRef = useRef<Destination | null>(null)
 
     // Synchroniser la ref isBackingUp
     useEffect(() => {
         isBackingUpRef.current = isBackingUp
     }, [isBackingUp])
+
+
+
+
+
 
     // Charger les données persistées au démarrage + USB
     useEffect(() => {
@@ -105,6 +128,22 @@ function App() {
             }
         })
 
+        // Charger l'état de connexion cloud
+        window.electronAPI.cloud.isConnected().then((connected) => {
+            setIsCloudConnected(connected)
+            if (connected) {
+                window.electronAPI.cloud.getUser().then((user) => {
+                    setCloudUser(user)
+                    // Marquer la destination cloud comme disponible
+                    setDestinations((prev) =>
+                        prev.map((d) =>
+                            d.type === 'cloud' ? { ...d, available: true } : d
+                        )
+                    )
+                })
+            }
+        })
+
         // Charger les lecteurs externes disponibles (USB + disques fixes non-C:)
         window.electronAPI.usb.getDrives().then((drives) => {
             // Inclure USB et disques fixes non-système
@@ -115,7 +154,7 @@ function App() {
                 // Garder les destinations non-USB + ajouter les lecteurs détectés
                 const nonUsbDests = prev.filter((d) => d.type !== 'usb')
                 const usbDests: Destination[] = externalDrives.map((d) => ({
-                    id: d.id, // Utiliser l'ID unique (Serial Number)
+                    id: d.id, // Utiliser l'ID unique
                     type: 'usb',
                     name: `${d.label} (${d.letter})`,
                     path: d.letter + '\\SaveApp_Backup',
@@ -134,6 +173,9 @@ function App() {
             const isExternal = drive.isReady && (drive.type === 'usb' || (drive.type === 'fixed' && drive.letter !== 'C:'))
             if (isExternal) {
                 console.log(`[SaveApp] Lecteur externe connecté: ${drive.letter} (${drive.label}) ID: ${drive.id}`)
+                toast.success(`Disque connecté : ${drive.label} (${drive.letter})`, {
+                    id: `usb-connect-${drive.id}`,
+                })
 
                 // Mettre à jour la liste des destinations
                 setDestinations((prev) => {
@@ -170,11 +212,24 @@ function App() {
                         }
 
                         console.log(`[SaveApp] ⚡ Auto-backup déclenché pour ${drive.label}`)
+                        toast.info(`Auto-backup détecté pour ${drive.label}...`, {
+                            id: `auto-backup-${drive.id}`,
+                        })
+
                         lastAutoBackupDriveIdRef.current = drive.id
+
+                        // Préparer la destination pour le backup synchrone
+                        autoBackupDestinationRef.current = {
+                            id: drive.id,
+                            type: 'usb',
+                            name: `${drive.label} (${drive.letter})`,
+                            path: drive.letter + '\\SaveApp_Backup', // Chemin forcé pour l'auto-backup
+                            available: true
+                        }
 
                         // Délai pour s'assurer que le disque est prêt (1.5s)
                         setTimeout(() => {
-                            // Sélectionner ce disque comme destination
+                            // Sélectionner aussi dans l'UI pour la cohérence visuelle
                             setSelectedDestinationId(drive.id)
 
                             // Déclencher le backup via click simulé
@@ -192,6 +247,11 @@ function App() {
         // Écouter les débranchements
         const unsubDisconnected = window.electronAPI.usb.onDriveDisconnected((drive) => {
             console.log(`[SaveApp] USB déconnecté: ${drive.letter}`)
+            toast('Disque déconnecté', {
+                description: `${drive.label} (${drive.letter})`,
+                id: `usb-disconnect-${drive.id}`,
+            })
+
             setDestinations((prev) => prev.filter((d) => d.id !== drive.id)) // Utiliser l'ID
 
             // Reset du flag anti-rebond si le drive est déconnecté
@@ -205,11 +265,49 @@ function App() {
             setProgress(prog)
         })
 
+        // Écouter les tâches planifiées
+        const unsubScheduler = window.electronAPI.scheduler.onRun(async (schedule) => {
+            console.log(`[SaveApp] Exécution de la tâche planifiée : ${schedule.name}`)
+            toast.info(`Démarrage de la tâche planifiée : ${schedule.name}`, { duration: 5000 })
+
+            // Vérifier si un backup est déjà en cours
+            if (isBackingUpRef.current) {
+                console.warn('[SaveApp] Tâche ignorée car un backup est déjà en cours')
+                toast.warning(`Tâche "${schedule.name}" reportée : backup en cours`)
+                return
+            }
+
+            // Simuler le déclenchement
+            // On le fait via un custom event ou directement en appelant une fonction dédiée
+            // Ici on va utiliser le trick du bouton caché ou une ref, mais le mieux est d'appeler handleStartBackup
+            // Cependant handleStartBackup dépend de l'état UI sélectionné.
+            // Il faut une fonction separated pour lancer un backup programmatique.
+
+            // Pour l'instant, on va set les sources/destinations requises et trigger
+            // Note: Cela va changer la sélection UI de l'utilisateur, ce qui est acceptable pour l'instant
+
+            // 1. Set sources
+            setSelectedSourceIds(new Set(schedule.sourceIds))
+
+            // 2. Set destination
+            setSelectedDestinationId(schedule.destinationId)
+
+            // 3. Attendre que le state se propage puis lancer
+            // On utilise un timeout pour laisser React faire son rendu
+            setTimeout(() => {
+                const startBtn = document.getElementById('start-backup-btn')
+                if (startBtn) startBtn.click()
+            }, 500)
+        })
+
         return () => {
             unsubConnected()
             unsubDisconnected()
             unsubProgress()
-            window.electronAPI?.usb.stopWatching()
+            unsubScheduler()
+            if (window.electronAPI) {
+                window.electronAPI.usb.stopWatching()
+            }
         }
     }, [])
 
@@ -237,24 +335,34 @@ function App() {
         const folderPath = await window.electronAPI.dialog.selectFolder()
         if (!folderPath) return
 
-        const folderName = folderPath.split('\\').pop() || folderPath
+        setIsAddingSource(true) // Loader ON
 
-        // Calculer la taille du dossier
-        const sizeResult = await window.electronAPI.folder.getSize(folderPath)
-        const size = sizeResult.success ? sizeResult.size || 0 : 0
+        try {
+            const folderName = folderPath.split('\\').pop() || folderPath
 
-        const newId = Date.now().toString()
-        setSources((prev) => [
-            ...prev,
-            {
-                id: newId,
-                path: folderPath,
-                name: folderName,
-                size,
-            },
-        ])
-        // Auto-sélectionner la nouvelle source
-        setSelectedSourceIds((prev) => new Set([...prev, newId]))
+            // Calculer la taille du dossier
+            const sizeResult = await window.electronAPI.folder.getSize(folderPath)
+            const size = sizeResult.success ? sizeResult.size || 0 : 0
+
+            const newId = Date.now().toString()
+            setSources((prev) => [
+                ...prev,
+                {
+                    id: newId,
+                    path: folderPath,
+                    name: folderName,
+                    size,
+                },
+            ])
+            // Auto-sélectionner la nouvelle source
+            setSelectedSourceIds((prev) => new Set([...prev, newId]))
+            toast.success('Source ajoutée avec succès', { id: 'source-add-success' })
+        } catch (error) {
+            console.error(error)
+            toast.error("Erreur lors de l'ajout de la source", { id: 'source-add-error' })
+        } finally {
+            setIsAddingSource(false) // Loader OFF
+        }
     }, [])
 
     /**
@@ -288,16 +396,76 @@ function App() {
     /**
      * Toggle l'auto-backup pour une destination
      */
+    /**
+     * Toggle l'auto-backup pour une destination
+     */
     const handleToggleAutoBackup = useCallback((id: string) => {
-        setAutoBackupDriveIds((prev) => {
-            const next = new Set(prev)
-            if (next.has(id)) {
-                next.delete(id)
+        const next = new Set(autoBackupDriveIds)
+        if (next.has(id)) {
+            next.delete(id)
+            toast('Auto-backup désactivé pour ce disque', {
+                id: `auto-backup-disabled-${id}`,
+            })
+        } else {
+            next.add(id)
+            toast.success('Auto-backup activé pour ce disque', {
+                id: `auto-backup-enabled-${id}`,
+            })
+        }
+        setAutoBackupDriveIds(next)
+    }, [autoBackupDriveIds])
+
+    /**
+     * Connecte à Google Drive
+     */
+    const handleCloudConnect = useCallback(async () => {
+        if (!window.electronAPI) return
+
+        setIsCloudConnecting(true)
+        try {
+            const result = await window.electronAPI.cloud.connect()
+            if (result.success && result.user) {
+                setIsCloudConnected(true)
+                setCloudUser(result.user)
+                setDestinations((prev) =>
+                    prev.map((d) =>
+                        d.type === 'cloud' ? { ...d, available: true } : d
+                    )
+                )
+                toast.success(`Connecté à Google Drive (${result.user.email})`)
             } else {
-                next.add(id)
+                toast.error(result.error || 'Erreur de connexion')
             }
-            return next
-        })
+        } catch (error) {
+            console.error('[SaveApp] Erreur connexion cloud:', error)
+            toast.error('Erreur lors de la connexion à Google Drive')
+        } finally {
+            setIsCloudConnecting(false)
+        }
+    }, [])
+
+    /**
+     * Déconnecte de Google Drive
+     */
+    const handleCloudDisconnect = useCallback(async () => {
+        if (!window.electronAPI) return
+
+        try {
+            await window.electronAPI.cloud.disconnect()
+            setIsCloudConnected(false)
+            setCloudUser(null)
+            setDestinations((prev) =>
+                prev.map((d) =>
+                    d.type === 'cloud' ? { ...d, available: false } : d
+                )
+            )
+            // Désélectionner si c'était sélectionné
+            setSelectedDestinationId((prev) => prev === 'cloud' ? null : prev)
+            toast('Déconnecté de Google Drive')
+        } catch (error) {
+            console.error('[SaveApp] Erreur déconnexion cloud:', error)
+            toast.error('Erreur lors de la déconnexion')
+        }
     }, [])
 
     /**
@@ -320,39 +488,61 @@ function App() {
                 return
             }
 
-            const folderName = folderPath.split('\\').pop() || folderPath
-            const sizeResult = await window.electronAPI.folder.getSize(folderPath)
-            const size = sizeResult.success ? sizeResult.size || 0 : 0
+            setIsAddingSource(true)
+            try {
+                const folderName = folderPath.split('\\').pop() || folderPath
+                const sizeResult = await window.electronAPI.folder.getSize(folderPath)
+                const size = sizeResult.success ? sizeResult.size || 0 : 0
 
-            const newId = Date.now().toString()
-            const newSource = {
-                id: newId,
-                path: folderPath,
-                name: folderName,
-                size,
+                const newId = Date.now().toString()
+                const newSource = {
+                    id: newId,
+                    path: folderPath,
+                    name: folderName,
+                    size,
+                }
+
+                // Ajouter à la liste, sélectionner, et utiliser pour cette sauvegarde
+                setSources((prev) => [...prev, newSource])
+                setSelectedSourceIds((prev) => new Set([...prev, newId]))
+                sourcesToBackup = [newSource]
+                toast.success('Source ajoutée', { id: 'source-add-adhoc' })
+            } finally {
+                setIsAddingSource(false)
             }
-
-            // Ajouter à la liste, sélectionner, et utiliser pour cette sauvegarde
-            setSources((prev) => [...prev, newSource])
-            setSelectedSourceIds((prev) => new Set([...prev, newId]))
-            sourcesToBackup = [newSource]
         }
 
-        // ÉTAPE 2 : Utiliser la destination sélectionnée ou en demander une
+        // ÉTAPE 2 : Vérifier la destination sélectionnée
+        const selectedDest = destinations.find((d) => d.id === selectedDestinationId && d.available)
+        const isCloudBackup = selectedDest?.type === 'cloud'
         let destinationPath: string | null = null
 
-        // Vérifier si une destination est sélectionnée dans l'UI
-        const selectedDest = destinations.find((d) => d.id === selectedDestinationId && d.available)
-        if (selectedDest && selectedDest.path) {
+        // Priorité 1 : Destination définie par l'auto-backup (via ref pour contourner l'async state)
+        if (autoBackupDestinationRef.current) {
+            destinationPath = autoBackupDestinationRef.current.path || null
+            console.log(`[SaveApp] Auto-Backup Destination: ${autoBackupDestinationRef.current.name}`)
+            // Reset de la ref pour les prochains backups manuels
+            autoBackupDestinationRef.current = null
+        } else if (isCloudBackup) {
+            // Backup vers Google Drive - pas besoin de chemin
+            console.log('[SaveApp] Destination cloud sélectionnée')
+        } else if (selectedDest && selectedDest.path) {
+            // Destination locale sélectionnée dans l'UI
             destinationPath = selectedDest.path
             console.log(`[SaveApp] Destination sélectionnée: ${selectedDest.name}`)
         } else {
-            // Sinon, demander via dialogue
+            // Demander via dialogue
             destinationPath = await window.electronAPI.dialog.selectDestination()
             if (!destinationPath) {
                 console.log('[SaveApp] Sélection de destination annulée')
                 return
             }
+        }
+
+        if (!isCloudBackup && !destinationPath) {
+            console.error('[SaveApp] Destination invalide (null)')
+            toast.error('Impossible de démarrer : Destination invalide')
+            return
         }
 
         // ÉTAPE 3 : Lancer la sauvegarde
@@ -361,20 +551,49 @@ function App() {
         setProgress(null)
         setLastResult(null)
 
+        toast.info(isCloudBackup ? 'Upload vers Google Drive...' : 'Démarrage de la sauvegarde...', { id: 'backup-start' })
+
         try {
             for (const source of sourcesToBackup) {
                 console.log(`[SaveApp] Sauvegarde de ${source.name}...`)
-                const result = await window.electronAPI.backup.start(source, destinationPath)
-                setLastResult(result)
+
+                let result
+                if (isCloudBackup) {
+                    // Upload vers Google Drive
+                    result = await window.electronAPI.cloud.upload(source)
+                    // Adapter le format de résultat pour l'affichage
+                    setLastResult({
+                        success: result.success,
+                        filesCreated: result.filesUploaded,
+                        filesUpdated: 0,
+                        filesDeleted: 0,
+                        bytesTransferred: result.bytesTransferred,
+                        errors: result.errors.map((e: { file: string; error: string }) => ({ ...e, code: 'CLOUD' })),
+                        duration: result.duration,
+                    })
+                } else {
+                    result = await window.electronAPI.backup.start(source, destinationPath!)
+                    setLastResult(result)
+                }
 
                 if (!result.success || result.errors.length > 0) {
                     setShowErrorReport(true)
+                    toast.error(`Erreur de sauvegarde pour ${source.name}`, {
+                        id: `backup-error-${source.id}`,
+                    })
+                } else {
+                    toast.success(isCloudBackup ? `Upload terminé : ${source.name}` : `Sauvegarde terminée : ${source.name}`, {
+                        id: `backup-success-${source.id}`,
+                    })
                 }
             }
 
             setLastBackupDate(new Date())
         } catch (error) {
             console.error('[SaveApp] Erreur pendant la sauvegarde:', error)
+            toast.error('Erreur critique pendant la sauvegarde', {
+                id: 'backup-critical',
+            })
         } finally {
             setIsBackingUp(false)
             setProgress(null)
@@ -390,9 +609,11 @@ function App() {
         if (isPaused) {
             window.electronAPI.backup.resume()
             setIsPaused(false)
+            toast('Sauvegarde reprise', { id: 'backup-resume' })
         } else {
             window.electronAPI.backup.pause()
             setIsPaused(true)
+            toast('Sauvegarde en pause', { id: 'backup-pause' })
         }
     }, [isPaused])
 
@@ -406,6 +627,7 @@ function App() {
         setIsBackingUp(false)
         setIsPaused(false)
         setProgress(null)
+        toast.error('Sauvegarde annulée', { id: 'backup-cancelled' })
     }, [])
 
     // Calcul de l'état de sauvegarde
@@ -415,10 +637,20 @@ function App() {
 
     return (
         <div className="h-full flex flex-col bg-dark-950">
+            <Toaster position="top-center" richColors theme="dark" />
             <TitleBar />
 
             <main className="flex-1 overflow-y-auto p-6">
                 <div className="max-w-4xl mx-auto space-y-6">
+                    <div className="flex justify-end">
+                        <button
+                            onClick={() => setShowScheduleManager(true)}
+                            className="text-sm text-gray-400 hover:text-white underline underline-offset-4 decoration-dashed"
+                        >
+                            Gérer les tâches planifiées
+                        </button>
+                    </div>
+
                     <Dashboard
                         needsBackup={needsBackup}
                         lastBackupDate={lastBackupDate}
@@ -445,6 +677,8 @@ function App() {
                             onAddSource={handleAddSource}
                             onRemoveSource={handleRemoveSource}
                             onToggleSource={handleToggleSource}
+                            isAddingSource={isAddingSource}
+                        // Passer l'état de chargement (si le composant le supporte, sinon on l'ajoutera)
                         />
                         <DestinationsList
                             destinations={destinations}
@@ -452,6 +686,11 @@ function App() {
                             onSelectDestination={setSelectedDestinationId}
                             autoBackupIds={autoBackupDriveIds}
                             onToggleAutoBackup={handleToggleAutoBackup}
+                            isCloudConnected={isCloudConnected}
+                            cloudUser={cloudUser}
+                            isCloudConnecting={isCloudConnecting}
+                            onCloudConnect={handleCloudConnect}
+                            onCloudDisconnect={handleCloudDisconnect}
                         />
                     </div>
                 </div>
@@ -464,6 +703,13 @@ function App() {
                     onClose={() => setShowErrorReport(false)}
                 />
             )}
+
+            <ScheduleManager
+                isOpen={showScheduleManager}
+                onClose={() => setShowScheduleManager(false)}
+                sources={sources}
+                destinations={destinations}
+            />
         </div>
     )
 }

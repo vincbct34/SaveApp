@@ -1,6 +1,6 @@
-# 📁 SaveApp - Phase 3 : L'Intégration USB
+# 📁 SaveApp - Phase 4 : Cloud Google Drive
 
-> Détection automatique des périphériques USB et déclenchement de la sauvegarde au branchement.
+> Sauvegarde vers Google Drive avec authentification OAuth2 sécurisée.
 
 ---
 
@@ -8,9 +8,12 @@
 
 | Objectif | Statut |
 |----------|--------|
-| Détection des lecteurs USB montés | 🔜 |
-| Événements branchement/débranchement | 🔜 |
-| Déclenchement automatique du backup | 🔜 |
+| Authentification OAuth2 (popup) | ✅ |
+| Stockage sécurisé des tokens | ✅ |
+| Création dossier SaveApp_Backup | ✅ |
+| Upload de fichiers avec streams | ✅ |
+| Progression en temps réel | ✅ |
+| UI Connect/Disconnect | ✅ |
 
 ---
 
@@ -23,58 +26,95 @@ npm run dev
 
 ---
 
-## 🔌 UsbService : Le cœur de la Phase 3
+## ⚙️ Configuration requise
 
-### Détection avec drivelist
+### 1. Créer un projet Google Cloud
 
-```typescript
-import drivelist from 'drivelist'
+1. Aller sur [Google Cloud Console](https://console.cloud.google.com)
+2. Créer un nouveau projet
+3. Activer l'API **Google Drive API**
+4. Aller dans **Credentials** > **Create Credentials** > **OAuth client ID**
+5. Type d'application : **Desktop app**
+6. Télécharger le fichier JSON
 
-const drives = await drivelist.list()
-// => [{ device: 'D:', mountpoints: [{path: 'D:\\'}], isUSB: true, ... }]
+### 2. Configurer SaveApp
+
+Créer un fichier `google-credentials.json` à la racine du projet :
+
+```json
+{
+  "client_id": "123456789-xxx.apps.googleusercontent.com",
+  "client_secret": "GOCSPX-xxx"
+}
 ```
 
-### Polling pour les événements
+> ⚠️ Ce fichier est dans le `.gitignore` - ne jamais le commiter !
 
-```typescript
-// Toutes les 2 secondes, comparer la liste des lecteurs
-setInterval(async () => {
-  const current = await drivelist.list()
-  const newDrives = current.filter(d => !previous.includes(d))
-  const removedDrives = previous.filter(d => !current.includes(d))
-  
-  if (newDrives.length) emit('usb:connected', newDrives)
-  if (removedDrives.length) emit('usb:disconnected', removedDrives)
-}, 2000)
+---
+
+## 🔌 Architecture Cloud
+
+```
+electron/services/
+└── GoogleDriveService.ts   # Service OAuth2 + Upload
+```
+
+### Flow d'authentification
+
+```
+[Clic "Se connecter"]
+       ↓
+[Popup navigateur Google]
+       ↓
+[Utilisateur se connecte]
+       ↓
+[Redirection localhost avec code]
+       ↓
+[Échange code → tokens]
+       ↓
+[Tokens stockés (chiffrés)]
+       ↓
+[Bouton devient "Connecté"]
 ```
 
 ---
 
-## 🔄 Auto-Backup
+## 🔒 Sécurité
 
-```
-[USB branché] 
-    ↓
-[SaveApp détecte le lecteur]
-    ↓
-[Notification: "Clé USB détectée. Lancer la sauvegarde ?"]
-    ↓
-[User confirme OU auto-backup activé]
-    ↓
-[Backup démarre automatiquement]
-```
+| Élément | Protection |
+|---------|------------|
+| Client ID/Secret | Fichier externe non commité |
+| Access Token | Stocké via electron-store |
+| Refresh Token | Stocké via electron-store |
+| Transmission | HTTPS uniquement |
 
 ---
 
 ## 💾 Nouvelles méthodes IPC
 
 ```typescript
-// Lister les lecteurs
-const drives = await window.electronAPI.usb.getDrives()
+// Vérifier si credentials configurées
+const hasCredentials = await window.electronAPI.cloud.hasCredentials()
 
-// Écouter les changements
-window.electronAPI.usb.onDriveChange((event, drives) => {
-  console.log('Lecteurs:', drives)
+// Connexion OAuth2
+const result = await window.electronAPI.cloud.connect()
+// => { success: true, user: { name, email } }
+
+// Déconnexion
+await window.electronAPI.cloud.disconnect()
+
+// État de connexion
+const isConnected = await window.electronAPI.cloud.isConnected()
+
+// Utilisateur connecté
+const user = await window.electronAPI.cloud.getUser()
+
+// Upload vers le cloud
+const result = await window.electronAPI.cloud.upload(source)
+
+// Progression
+window.electronAPI.cloud.onProgress((progress) => {
+  console.log(progress.percent, progress.currentFile)
 })
 ```
 
@@ -86,11 +126,15 @@ window.electronAPI.usb.onDriveChange((event, drives) => {
 |----------|-------------|
 | `npm run dev` | Lance le serveur de dev |
 | `npm run build` | Build de production |
+| `npm run typecheck` | Vérification TypeScript |
 
 ---
 
-## 🔄 Prochaine étape : Phase 4
+## ✅ Roadmap complète
 
-La Phase 4 implémentera le Cloud Google Drive :
-- OAuth2 authentication
-- Upload API
+| Phase | Description | Statut |
+|-------|-------------|--------|
+| 1 | Squelette (Electron + UI + IPC) | ✅ |
+| 2 | Logique locale (copie streams) | ✅ |
+| 3 | Intégration USB | ✅ |
+| 4 | **Cloud Google Drive** | ✅ |

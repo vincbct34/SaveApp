@@ -23,3 +23,6 @@ Thumbs.db
 
 # Electron
 *.asar
+
+# Google OAuth credentials
+google-credentials.json

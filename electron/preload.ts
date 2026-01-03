@@ -47,6 +47,42 @@ export interface DriveInfo {
     isReady: boolean
 }
 
+export interface BackupSchedule {
+    id: string
+    name: string
+    frequency: 'daily' | 'weekly'
+    time: string
+    days: number[]
+    sourceIds: string[]
+    destinationId: string
+    enabled: boolean
+    lastRun: string | null
+}
+
+export interface GoogleUserInfo {
+    name: string
+    email: string
+    picture?: string
+}
+
+export interface CloudUploadProgress {
+    phase: 'scanning' | 'uploading' | 'done' | 'error'
+    totalFiles: number
+    uploadedFiles: number
+    totalBytes: number
+    uploadedBytes: number
+    currentFile: string
+    percent: number
+}
+
+export interface CloudSyncResult {
+    success: boolean
+    filesUploaded: number
+    bytesTransferred: number
+    errors: Array<{ file: string; error: string }>
+    duration: number
+}
+
 /**
  * API exposée au renderer process via le context bridge
  */
@@ -148,6 +184,63 @@ const electronAPI = {
                 callback(drive)
             ipcRenderer.on('usb:driveDisconnected', handler)
             return () => ipcRenderer.removeListener('usb:driveDisconnected', handler)
+        },
+    },
+
+    // === Scheduler ===
+    scheduler: {
+        getSchedules: () =>
+            ipcRenderer.invoke('scheduler:getSchedules') as Promise<BackupSchedule[]>,
+
+        addSchedule: (schedule: BackupSchedule) =>
+            ipcRenderer.invoke('scheduler:addSchedule', schedule) as Promise<boolean>,
+
+        updateSchedule: (schedule: BackupSchedule) =>
+            ipcRenderer.invoke('scheduler:updateSchedule', schedule) as Promise<boolean>,
+
+        removeSchedule: (id: string) =>
+            ipcRenderer.invoke('scheduler:removeSchedule', id) as Promise<boolean>,
+
+        onRun: (callback: (schedule: BackupSchedule) => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, schedule: BackupSchedule) =>
+                callback(schedule)
+            ipcRenderer.on('scheduler:run', handler)
+            return () => ipcRenderer.removeListener('scheduler:run', handler)
+        },
+    },
+
+    // === Cloud (Google Drive) ===
+    cloud: {
+        hasCredentials: () =>
+            ipcRenderer.invoke('cloud:hasCredentials') as Promise<boolean>,
+
+        isConnected: () =>
+            ipcRenderer.invoke('cloud:isConnected') as Promise<boolean>,
+
+        connect: () =>
+            ipcRenderer.invoke('cloud:connect') as Promise<{
+                success: boolean
+                user?: GoogleUserInfo
+                error?: string
+            }>,
+
+        disconnect: () =>
+            ipcRenderer.invoke('cloud:disconnect') as Promise<void>,
+
+        getUser: () =>
+            ipcRenderer.invoke('cloud:getUser') as Promise<GoogleUserInfo | null>,
+
+        upload: (source: SourceConfig) =>
+            ipcRenderer.invoke('cloud:upload', source) as Promise<CloudSyncResult>,
+
+        cancel: () =>
+            ipcRenderer.send('cloud:cancel'),
+
+        onProgress: (callback: (progress: CloudUploadProgress) => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, progress: CloudUploadProgress) =>
+                callback(progress)
+            ipcRenderer.on('cloud:progress', handler)
+            return () => ipcRenderer.removeListener('cloud:progress', handler)
         },
     },
 

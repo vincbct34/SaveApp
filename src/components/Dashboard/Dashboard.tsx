@@ -1,3 +1,6 @@
+import { useState, useEffect } from 'react'
+import { getNextRunTime, BackupSchedule } from '../../utils/schedulerUtils'
+
 interface DashboardProps {
     needsBackup: boolean
     lastBackupDate: Date | null
@@ -10,6 +13,45 @@ interface DashboardProps {
  * Design rassurant : vert si OK, orange si sauvegarde nécessaire
  */
 function Dashboard({ needsBackup, lastBackupDate, isBackingUp, onStartBackup }: DashboardProps) {
+    const [nextBackupDate, setNextBackupDate] = useState<Date | null>(null)
+
+    useEffect(() => {
+        if (!window.electronAPI) return
+
+        const updateNextBackup = async () => {
+            const schedules: BackupSchedule[] = await window.electronAPI.scheduler.getSchedules()
+            const next = getNextRunTime(schedules)
+            setNextBackupDate(next)
+        }
+
+        updateNextBackup()
+
+        // Mettre à jour périodiquement (ex: quand on revient sur la fenêtre ou chaque minute)
+        const interval = setInterval(updateNextBackup, 60000)
+        return () => clearInterval(interval)
+    }, [])
+
+    /**
+     * Formate la date de prochaine sauvegarde
+     */
+    const formatNextBackup = (date: Date | null): string => {
+        if (!date) return 'Aucune planification'
+
+        const now = new Date()
+        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
+
+        const tomorrow = new Date(now)
+        tomorrow.setDate(tomorrow.getDate() + 1)
+        const isTomorrow = date.getDate() === tomorrow.getDate() && date.getMonth() === tomorrow.getMonth() && date.getFullYear() === tomorrow.getFullYear()
+
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+        if (isToday) return `Aujourd'hui à ${timeStr}`
+        if (isTomorrow) return `Demain à ${timeStr}`
+
+        return `${date.toLocaleDateString([], { weekday: 'long', day: 'numeric' })} à ${timeStr}`
+    }
+
     /**
      * Formate la date de dernière sauvegarde
      */
@@ -33,8 +75,8 @@ function Dashboard({ needsBackup, lastBackupDate, isBackingUp, onStartBackup }: 
             {/* Statut avec indicateur */}
             <div className="flex items-center gap-4 mb-6">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${needsBackup
-                        ? 'bg-gradient-to-br from-warning-500/20 to-warning-600/20'
-                        : 'bg-gradient-to-br from-success-500/20 to-success-600/20'
+                    ? 'bg-gradient-to-br from-warning-500/20 to-warning-600/20'
+                    : 'bg-gradient-to-br from-success-500/20 to-success-600/20'
                     }`}>
                     {needsBackup ? (
                         <svg className="w-8 h-8 text-warning-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -51,8 +93,13 @@ function Dashboard({ needsBackup, lastBackupDate, isBackingUp, onStartBackup }: 
                     <h1 className={`text-2xl font-bold ${needsBackup ? 'text-warning-400' : 'text-success-400'}`}>
                         {needsBackup ? 'Sauvegarde nécessaire' : 'Tout est sauvegardé'}
                     </h1>
-                    <p className="text-dark-400 mt-1">
-                        Dernière sauvegarde : <span className="text-dark-200">{formatLastBackup(lastBackupDate)}</span>
+                    <p className="text-dark-400 mt-1 flex flex-col gap-1">
+                        <span>Dernière sauvegarde : <span className="text-dark-200">{formatLastBackup(lastBackupDate)}</span></span>
+                        {nextBackupDate && (
+                            <span className="text-xs text-blue-400/80 bg-blue-500/10 px-2 py-0.5 rounded-full w-fit">
+                                Prochaine : {formatNextBackup(nextBackupDate)}
+                            </span>
+                        )}
                     </p>
                 </div>
             </div>
@@ -62,8 +109,8 @@ function Dashboard({ needsBackup, lastBackupDate, isBackingUp, onStartBackup }: 
                 onClick={onStartBackup}
                 disabled={isBackingUp}
                 className={`w-full py-4 rounded-xl font-semibold text-lg transition-all duration-300 ${isBackingUp
-                        ? 'bg-dark-700 text-dark-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 text-white shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 hover:scale-[1.02] active:scale-[0.98]'
+                    ? 'bg-dark-700 text-dark-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 text-white shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 hover:scale-[1.02] active:scale-[0.98]'
                     }`}
             >
                 {isBackingUp ? (
