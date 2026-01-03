@@ -9,9 +9,11 @@ import { BrowserWindow } from 'electron'
 import { EventEmitter } from 'events'
 import * as fs from 'fs'
 import * as path from 'path'
+import { createHash } from 'crypto'
 import { storeService } from './StoreService'
 import type { SourceConfig } from './StoreService'
 import { scanDirectory } from './FileUtils'
+import { logger } from './Logger'
 
 /**
  * Configuration OAuth2 pour Google Drive
@@ -249,10 +251,10 @@ class GoogleDriveService extends EventEmitter {
                 storeService.setGoogleUserInfo(userInfo)
             }
 
-            console.log('[GoogleDrive] Authentification réussie')
+            logger.info('GoogleDrive', 'Authentification réussie')
             return { success: true, user: userInfo || undefined }
         } catch (error) {
-            console.error('[GoogleDrive] Erreur authentification:', error)
+            logger.error('GoogleDrive', 'Erreur authentification:', error)
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Erreur inconnue',
@@ -328,7 +330,7 @@ class GoogleDriveService extends EventEmitter {
                 picture: data.picture || undefined,
             }
         } catch (error) {
-            console.error('[GoogleDrive] Erreur getUserInfo:', error)
+            logger.error('GoogleDrive', 'Erreur getUserInfo:', error)
             return null
         }
     }
@@ -338,24 +340,16 @@ class GoogleDriveService extends EventEmitter {
      */
     async logout(): Promise<void> {
         try {
-            // Révoquer le token si possible
             if (this.oauth2Client) {
-                const tokens = storeService.getGoogleTokens()
-                if (tokens?.access_token) {
-                    try {
-                        await this.oauth2Client.revokeToken(tokens.access_token)
-                    } catch {
-                        // Ignorer les erreurs de révocation
-                    }
-                }
+                await this.oauth2Client.revokeCredentials()
             }
-        } finally {
-            // Supprimer les tokens locaux
-            storeService.clearGoogleAuth()
             this.oauth2Client = null
             this.drive = null
             this.backupFolderId = null
-            console.log('[GoogleDrive] Déconnexion effectuée')
+            storeService.clearGoogleAuth()
+            logger.info('GoogleDrive', 'Déconnexion effectuée')
+        } catch (error) {
+            logger.error('GoogleDrive', 'Erreur lors de la déconnexion:', error)
         }
     }
 
@@ -379,9 +373,10 @@ class GoogleDriveService extends EventEmitter {
                 spaces: 'drive',
             })
 
-            if (response.data.files && response.data.files.length > 0) {
-                this.backupFolderId = response.data.files[0].id!
-                console.log(`[GoogleDrive] Dossier backup trouvé: ${this.backupFolderId}`)
+            const folders = response.data.files
+            if (folders && folders.length > 0) {
+                this.backupFolderId = folders[0].id || null
+                logger.info('GoogleDrive', `Dossier backup trouvé: ${this.backupFolderId}`)
                 return this.backupFolderId
             }
 
@@ -394,11 +389,11 @@ class GoogleDriveService extends EventEmitter {
                 fields: 'id',
             })
 
-            this.backupFolderId = folder.data.id!
-            console.log(`[GoogleDrive] Dossier backup créé: ${this.backupFolderId}`)
+            this.backupFolderId = folder.data.id || null
+            logger.info('GoogleDrive', `Dossier backup créé: ${this.backupFolderId}`)
             return this.backupFolderId
         } catch (error) {
-            console.error('[GoogleDrive] Erreur ensureBackupFolder:', error)
+            logger.error('GoogleDrive', 'Erreur ensureBackupFolder:', error)
             return null
         }
     }
@@ -433,7 +428,7 @@ class GoogleDriveService extends EventEmitter {
 
             return folder.data.id!
         } catch (error) {
-            console.error(`[GoogleDrive] Erreur création sous-dossier ${name}:`, error)
+            logger.error('GoogleDrive', `Erreur création sous-dossier ${name}:`, error)
             return null
         }
     }
@@ -469,33 +464,39 @@ class GoogleDriveService extends EventEmitter {
             const config = {
                 onUploadProgress: (evt: { bytesRead: number }) => {
                     onProgress?.(evt.bytesRead)
-                }
+                },
             }
 
             if (existingFileId) {
                 // Mettre à jour le fichier existant
-                await this.drive.files.update({
-                    fileId: existingFileId,
-                    media: {
-                        body: fileStream,
+                await this.drive.files.update(
+                    {
+                        fileId: existingFileId,
+                        media: {
+                            body: fileStream,
+                        },
                     },
-                }, config)
+                    config
+                )
             } else {
                 // Créer un nouveau fichier
-                await this.drive.files.create({
-                    requestBody: {
-                        name: fileName,
-                        parents: [parentId],
+                await this.drive.files.create(
+                    {
+                        requestBody: {
+                            name: fileName,
+                            parents: [parentId],
+                        },
+                        media: {
+                            body: fileStream,
+                        },
                     },
-                    media: {
-                        body: fileStream,
-                    },
-                }, config)
+                    config
+                )
             }
 
             return { success: true }
         } catch (error) {
-            console.error(`[GoogleDrive] Erreur upload ${fileName}:`, error)
+            logger.error('GoogleDrive', `Erreur upload ${fileName}:`, error)
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Erreur upload',
@@ -508,7 +509,7 @@ class GoogleDriveService extends EventEmitter {
      */
     private async computeFileMD5(filePath: string): Promise<string> {
         return new Promise((resolve, reject) => {
-            const hash = require('crypto').createHash('md5')
+            const hash = createHash('md5')
             const stream = fs.createReadStream(filePath)
             stream.on('data', (data: Buffer) => hash.update(data))
             stream.on('end', () => resolve(hash.digest('hex')))
@@ -519,7 +520,10 @@ class GoogleDriveService extends EventEmitter {
     /**
      * Récupère la map des fichiers distants avec leurs hashs MD5
      */
-    private async getRemoteFilesMap(folderId: string, basePath: string = ''): Promise<Map<string, { id: string; md5: string }>> {
+    private async getRemoteFilesMap(
+        folderId: string,
+        basePath: string = ''
+    ): Promise<Map<string, { id: string; md5: string }>> {
         const map = new Map<string, { id: string; md5: string }>()
         if (!this.drive) return map
 
@@ -542,7 +546,7 @@ class GoogleDriveService extends EventEmitter {
                 }
             }
         } catch (error) {
-            console.error('[GoogleDrive] Erreur getRemoteFilesMap:', error)
+            logger.error('GoogleDrive', 'Erreur getRemoteFilesMap:', error)
         }
 
         return map
@@ -621,7 +625,7 @@ class GoogleDriveService extends EventEmitter {
                         filesUploaded: 0,
                         filesSkipped: 0,
                         bytesTransferred: 0,
-                        errors: [{ file: '', error: 'Impossible d\'initialiser le client' }],
+                        errors: [{ file: '', error: "Impossible d'initialiser le client" }],
                         duration: Date.now() - startTime,
                     }
                 }
@@ -685,9 +689,9 @@ class GoogleDriveService extends EventEmitter {
             folderIdCache.set('', sourceFolderId)
 
             // Phase 3.5: Charger la map des fichiers distants pour sync incrémentale
-            console.log('[GoogleDrive] Chargement des fichiers distants pour sync incrémentale...')
+            logger.info('GoogleDrive', 'Chargement des fichiers distants pour sync incrémentale...')
             const remoteFilesMap = await this.getRemoteFilesMap(sourceFolderId)
-            console.log(`[GoogleDrive] ${remoteFilesMap.size} fichiers distants trouvés`)
+            logger.info('GoogleDrive', `${remoteFilesMap.size} fichiers distants trouvés`)
 
             for (const file of filesToUpload) {
                 if (this.isCancelled) break
@@ -763,7 +767,10 @@ class GoogleDriveService extends EventEmitter {
                     }
                     bytesTransferred += file.size
                 } else {
-                    errors.push({ file: file.relativePath, error: result.error || 'Erreur inconnue' })
+                    errors.push({
+                        file: file.relativePath,
+                        error: result.error || 'Erreur inconnue',
+                    })
                 }
             }
 
@@ -803,7 +810,9 @@ class GoogleDriveService extends EventEmitter {
                 filesUploaded,
                 filesSkipped,
                 bytesTransferred,
-                errors: [{ file: '', error: error instanceof Error ? error.message : 'Erreur inconnue' }],
+                errors: [
+                    { file: '', error: error instanceof Error ? error.message : 'Erreur inconnue' },
+                ],
                 duration: Date.now() - startTime,
             }
         }
@@ -838,7 +847,7 @@ class GoogleDriveService extends EventEmitter {
                 orderBy: 'modifiedTime desc',
             })
 
-            return (response.data.files || []).map(f => ({
+            return (response.data.files || []).map((f) => ({
                 id: f.id!,
                 name: f.name!,
                 modifiedTime: f.modifiedTime!,
@@ -961,10 +970,10 @@ class GoogleDriveService extends EventEmitter {
 
         return new Promise((resolve, reject) => {
             const dest = fs.createWriteStream(destPath)
-                ; (response.data as NodeJS.ReadableStream)
-                    .pipe(dest)
-                    .on('finish', resolve)
-                    .on('error', reject)
+            ;(response.data as NodeJS.ReadableStream)
+                .pipe(dest)
+                .on('finish', resolve)
+                .on('error', reject)
         })
     }
 }

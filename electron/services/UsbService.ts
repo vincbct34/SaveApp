@@ -2,6 +2,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { EventEmitter } from 'events'
 import * as fs from 'fs'
+import { logger } from './Logger'
 
 const execAsync = promisify(exec)
 
@@ -9,12 +10,12 @@ const execAsync = promisify(exec)
  * Informations sur un lecteur
  */
 export interface DriveInfo {
-    id: string            // SerialNumber ou Letter
-    letter: string        // Ex: "D:"
-    label: string         // Ex: "USB_BACKUP"
+    id: string // SerialNumber ou Letter
+    letter: string // Ex: "D:"
+    label: string // Ex: "USB_BACKUP"
     type: 'usb' | 'fixed' | 'network' | 'unknown'
-    size: number          // Taille totale en bytes
-    freeSpace: number     // Espace libre en bytes
+    size: number // Taille totale en bytes
+    freeSpace: number // Espace libre en bytes
     isReady: boolean
 }
 
@@ -37,34 +38,33 @@ class UsbService extends EventEmitter {
                 { encoding: 'utf8' }
             )
 
-
-
             const rawDrives = JSON.parse(stdout || '[]')
             const drivesArray = Array.isArray(rawDrives) ? rawDrives : [rawDrives]
 
             const drives = drivesArray
                 .filter((d: { DeviceID: string }) => d.DeviceID)
-                .map((d: {
-                    DeviceID: string
-                    VolumeName: string | null
-                    DriveType: number
-                    Size: number | null
-                    FreeSpace: number | null
-                    VolumeSerialNumber: string | null
-                }) => ({
-                    id: d.VolumeSerialNumber || d.DeviceID, // Utiliser SerialNumber comme ID unique, fallback sur la lettre
-                    letter: d.DeviceID,
-                    label: d.VolumeName || 'Sans nom',
-                    type: this.getDriveType(d.DriveType),
-                    size: d.Size || 0,
-                    freeSpace: d.FreeSpace || 0,
-                    isReady: d.Size !== null && d.Size > 0,
-                }))
-
+                .map(
+                    (d: {
+                        DeviceID: string
+                        VolumeName: string | null
+                        DriveType: number
+                        Size: number | null
+                        FreeSpace: number | null
+                        VolumeSerialNumber: string | null
+                    }) => ({
+                        id: d.VolumeSerialNumber || d.DeviceID, // Utiliser SerialNumber comme ID unique, fallback sur la lettre
+                        letter: d.DeviceID,
+                        label: d.VolumeName || 'Sans nom',
+                        type: this.getDriveType(d.DriveType),
+                        size: d.Size || 0,
+                        freeSpace: d.FreeSpace || 0,
+                        isReady: d.Size !== null && d.Size > 0,
+                    })
+                )
 
             return drives
         } catch (error) {
-            console.error('[UsbService] Erreur lors de la liste des lecteurs:', error)
+            logger.error('UsbService', 'Erreur lors de la liste des lecteurs:', error)
             return null
         }
     }
@@ -92,7 +92,6 @@ class UsbService extends EventEmitter {
 
         this.isWatching = true
 
-
         // Initialiser la liste des lecteurs avant de commencer le polling
         this.listDrives().then((drives) => {
             if (drives) {
@@ -106,13 +105,18 @@ class UsbService extends EventEmitter {
                 // Si erreur (null), on ignore ce tour pour éviter les faux positifs de déconnexion
                 if (currentDrives === null) return
 
-                const currentMap = new Map<string, DriveInfo>(currentDrives.map((d) => [d.letter, d]))
+                const currentMap = new Map<string, DriveInfo>(
+                    currentDrives.map((d) => [d.letter, d])
+                )
 
                 // Détecter les nouveaux lecteurs
                 const currentEntries = Array.from(currentMap.entries())
                 for (const [letter, drive] of currentEntries) {
                     if (!this.previousDrives.has(letter)) {
-                        console.log(`[UsbService] Nouveau lecteur détecté: ${letter} (${drive.label})`)
+                        logger.info(
+                            'UsbService',
+                            `Nouveau lecteur détecté: ${letter} (${drive.label})`
+                        )
                         this.emit('drive:connected', drive)
                     }
                 }
@@ -121,7 +125,7 @@ class UsbService extends EventEmitter {
                 const previousEntries = Array.from(this.previousDrives.entries())
                 for (const [letter, drive] of previousEntries) {
                     if (!currentMap.has(letter)) {
-                        console.log(`[UsbService] Lecteur déconnecté: ${letter} (${drive.label})`)
+                        logger.info('UsbService', `Lecteur déconnecté: ${letter} (${drive.label})`)
                         this.emit('drive:disconnected', drive)
                     }
                 }
@@ -140,7 +144,6 @@ class UsbService extends EventEmitter {
             this.pollingInterval = null
         }
         this.isWatching = false
-
     }
 
     /**

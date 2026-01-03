@@ -122,8 +122,7 @@ const electronAPI = {
 
     // === Dialogues système ===
     dialog: {
-        selectFolder: () =>
-            ipcRenderer.invoke('dialog:selectFolder') as Promise<string | null>,
+        selectFolder: () => ipcRenderer.invoke('dialog:selectFolder') as Promise<string | null>,
         selectDestination: () =>
             ipcRenderer.invoke('dialog:selectDestination') as Promise<string | null>,
     },
@@ -159,8 +158,7 @@ const electronAPI = {
 
     // === Persistance (Store) ===
     store: {
-        getSources: () =>
-            ipcRenderer.invoke('store:getSources') as Promise<SourceConfig[]>,
+        getSources: () => ipcRenderer.invoke('store:getSources') as Promise<SourceConfig[]>,
 
         setSources: (sources: SourceConfig[]) =>
             ipcRenderer.invoke('store:setSources', sources) as Promise<boolean>,
@@ -174,8 +172,7 @@ const electronAPI = {
         setPreferences: (prefs: Partial<UserPreferences>) =>
             ipcRenderer.invoke('store:setPreferences', prefs) as Promise<boolean>,
 
-        getAutoBackupIds: () =>
-            ipcRenderer.invoke('store:getAutoBackupIds') as Promise<string[]>,
+        getAutoBackupIds: () => ipcRenderer.invoke('store:getAutoBackupIds') as Promise<string[]>,
 
         setAutoBackupIds: (ids: string[]) =>
             ipcRenderer.invoke('store:setAutoBackupIds', ids) as Promise<boolean>,
@@ -192,15 +189,13 @@ const electronAPI = {
         stopWatching: () => ipcRenderer.send('usb:stopWatching'),
 
         onDriveConnected: (callback: (drive: DriveInfo) => void) => {
-            const handler = (_event: Electron.IpcRendererEvent, drive: DriveInfo) =>
-                callback(drive)
+            const handler = (_event: Electron.IpcRendererEvent, drive: DriveInfo) => callback(drive)
             ipcRenderer.on('usb:driveConnected', handler)
             return () => ipcRenderer.removeListener('usb:driveConnected', handler)
         },
 
         onDriveDisconnected: (callback: (drive: DriveInfo) => void) => {
-            const handler = (_event: Electron.IpcRendererEvent, drive: DriveInfo) =>
-                callback(drive)
+            const handler = (_event: Electron.IpcRendererEvent, drive: DriveInfo) => callback(drive)
             ipcRenderer.on('usb:driveDisconnected', handler)
             return () => ipcRenderer.removeListener('usb:driveDisconnected', handler)
         },
@@ -230,11 +225,9 @@ const electronAPI = {
 
     // === Cloud (Google Drive) ===
     cloud: {
-        hasCredentials: () =>
-            ipcRenderer.invoke('cloud:hasCredentials') as Promise<boolean>,
+        hasCredentials: () => ipcRenderer.invoke('cloud:hasCredentials') as Promise<boolean>,
 
-        isConnected: () =>
-            ipcRenderer.invoke('cloud:isConnected') as Promise<boolean>,
+        isConnected: () => ipcRenderer.invoke('cloud:isConnected') as Promise<boolean>,
 
         connect: () =>
             ipcRenderer.invoke('cloud:connect') as Promise<{
@@ -243,23 +236,18 @@ const electronAPI = {
                 error?: string
             }>,
 
-        disconnect: () =>
-            ipcRenderer.invoke('cloud:disconnect') as Promise<void>,
+        disconnect: () => ipcRenderer.invoke('cloud:disconnect') as Promise<void>,
 
-        getUser: () =>
-            ipcRenderer.invoke('cloud:getUser') as Promise<GoogleUserInfo | null>,
+        getUser: () => ipcRenderer.invoke('cloud:getUser') as Promise<GoogleUserInfo | null>,
 
         upload: (source: SourceConfig) =>
             ipcRenderer.invoke('cloud:upload', source) as Promise<CloudSyncResult>,
 
-        cancel: () =>
-            ipcRenderer.send('cloud:cancel'),
+        cancel: () => ipcRenderer.send('cloud:cancel'),
 
-        pause: () =>
-            ipcRenderer.send('cloud:pause'),
+        pause: () => ipcRenderer.send('cloud:pause'),
 
-        resume: () =>
-            ipcRenderer.send('cloud:resume'),
+        resume: () => ipcRenderer.send('cloud:resume'),
 
         onProgress: (callback: (progress: CloudUploadProgress) => void) => {
             const handler = (_event: Electron.IpcRendererEvent, progress: CloudUploadProgress) =>
@@ -269,8 +257,7 @@ const electronAPI = {
         },
 
         // Restore
-        listBackups: () =>
-            ipcRenderer.invoke('cloud:listBackups') as Promise<BackupInfo[]>,
+        listBackups: () => ipcRenderer.invoke('cloud:listBackups') as Promise<BackupInfo[]>,
 
         restore: (backupId: string, destPath: string) =>
             ipcRenderer.invoke('cloud:restore', backupId, destPath) as Promise<RestoreResult>,

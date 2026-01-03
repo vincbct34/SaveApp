@@ -1,0 +1,22 @@
+
+> saveapp@1.0.0 lint
+> eslint . --ext .ts,.tsx
+
+
+C:\Users\Vincent\Desktop\CODE\SaveApp\electron\services\Logger.ts
+  29:86  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  40:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  67:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  71:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  75:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  79:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Vincent\Desktop\CODE\SaveApp\electron\services\SchedulerService.ts
+  76:17  error  Parsing error: Declaration or statement expected
+
+C:\Users\Vincent\Desktop\CODE\SaveApp\electron\services\UsbService.ts
+  5:10  error  'app' is defined but never used   @typescript-eslint/no-unused-vars
+  6:13  error  'path' is defined but never used  @typescript-eslint/no-unused-vars
+
+Ô£û 9 problems (3 errors, 6 warnings)
+

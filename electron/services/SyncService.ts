@@ -1,12 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { EventEmitter } from 'events'
-import {
-    FileInfo,
-    scanDirectory,
-    copyFileWithStream,
-    isFileLocked,
-} from './FileUtils'
+import { FileInfo, scanDirectory, copyFileWithStream, isFileLocked } from './FileUtils'
 import { storeService, SourceConfig } from './StoreService'
 
 /**
@@ -303,8 +298,7 @@ class SyncService extends EventEmitter {
     private calculatePercent(): number {
         if (this.currentProgress.totalFiles === 0) return 0
         return Math.round(
-            (this.currentProgress.processedFiles / this.currentProgress.totalFiles) *
-            100
+            (this.currentProgress.processedFiles / this.currentProgress.totalFiles) * 100
         )
     }
 

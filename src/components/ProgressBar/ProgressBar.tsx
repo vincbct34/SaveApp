@@ -60,7 +60,16 @@ function getPhaseLabel(phase: SyncProgress['phase']): string {
  * Barre de progression de la sauvegarde avec données réelles
  */
 function ProgressBar({ progress, isPaused, onPause, onCancel }: ProgressBarProps) {
-    const { phase, percent, currentFile, totalBytes, copiedBytes, processedFiles, totalFiles, errors } = progress
+    const {
+        phase,
+        percent,
+        currentFile,
+        totalBytes,
+        copiedBytes,
+        processedFiles,
+        totalFiles,
+        errors,
+    } = progress
 
     return (
         <section className="bg-dark-900 rounded-2xl p-6 border border-dark-800">
@@ -73,7 +82,9 @@ function ProgressBar({ progress, isPaused, onPause, onCancel }: ProgressBarProps
                 <div className="text-right">
                     <span className="text-2xl font-bold text-primary-400">{percent}%</span>
                     {errors.length > 0 && (
-                        <p className="text-xs text-warning-400">{errors.length} fichier(s) ignoré(s)</p>
+                        <p className="text-xs text-warning-400">
+                            {errors.length} fichier(s) ignoré(s)
+                        </p>
                     )}
                 </div>
             </div>
@@ -81,10 +92,11 @@ function ProgressBar({ progress, isPaused, onPause, onCancel }: ProgressBarProps
             {/* Barre de progression */}
             <div className="relative h-3 bg-dark-800 rounded-full overflow-hidden mb-4">
                 <div
-                    className={`absolute inset-y-0 left-0 rounded-full transition-all duration-300 ease-out ${phase === 'error'
+                    className={`absolute inset-y-0 left-0 rounded-full transition-all duration-300 ease-out ${
+                        phase === 'error'
                             ? 'bg-red-500'
                             : 'bg-gradient-to-r from-primary-600 to-primary-400'
-                        }`}
+                    }`}
                     style={{ width: `${percent}%` }}
                 />
                 {phase === 'copying' && (
@@ -97,15 +109,17 @@ function ProgressBar({ progress, isPaused, onPause, onCancel }: ProgressBarProps
 
             {/* Stats détaillées */}
             <div className="flex items-center justify-between text-sm text-dark-400 mb-4">
-                <span>{processedFiles} / {totalFiles} fichiers</span>
-                <span>{formatBytes(copiedBytes)} / {formatBytes(totalBytes)}</span>
+                <span>
+                    {processedFiles} / {totalFiles} fichiers
+                </span>
+                <span>
+                    {formatBytes(copiedBytes)} / {formatBytes(totalBytes)}
+                </span>
             </div>
 
             {/* Fichier en cours */}
             {currentFile && phase === 'copying' && (
-                <p className="text-sm text-dark-500 truncate mb-4">
-                    📄 {currentFile}
-                </p>
+                <p className="text-sm text-dark-500 truncate mb-4">📄 {currentFile}</p>
             )}
 
             {/* Boutons d'action */}
@@ -116,15 +130,35 @@ function ProgressBar({ progress, isPaused, onPause, onCancel }: ProgressBarProps
                 >
                     {isPaused ? (
                         <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                                />
                             </svg>
                             Reprendre
                         </>
                     ) : (
                         <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
                             </svg>
                             Pause
                         </>
@@ -136,7 +170,12 @@ function ProgressBar({ progress, isPaused, onPause, onCancel }: ProgressBarProps
                     className="flex-1 py-2.5 rounded-xl font-medium bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors flex items-center justify-center gap-2"
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                        />
                     </svg>
                     Annuler
                 </button>

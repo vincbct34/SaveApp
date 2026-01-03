@@ -36,25 +36,56 @@ function ErrorReport({ result, onClose }: ErrorReportProps) {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
             <div className="bg-dark-900 rounded-2xl border border-dark-800 max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col">
                 {/* En-tête */}
-                <div className={`p-6 border-b border-dark-800 ${hasErrors ? 'bg-warning-500/10' : 'bg-success-500/10'}`}>
+                <div
+                    className={`p-6 border-b border-dark-800 ${hasErrors ? 'bg-warning-500/10' : 'bg-success-500/10'}`}
+                >
                     <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${hasErrors ? 'bg-warning-500/20' : 'bg-success-500/20'
-                            }`}>
+                        <div
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                                hasErrors ? 'bg-warning-500/20' : 'bg-success-500/20'
+                            }`}
+                        >
                             {hasErrors ? (
-                                <svg className="w-6 h-6 text-warning-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                <svg
+                                    className="w-6 h-6 text-warning-400"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                    />
                                 </svg>
                             ) : (
-                                <svg className="w-6 h-6 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <svg
+                                    className="w-6 h-6 text-success-400"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
                                 </svg>
                             )}
                         </div>
                         <div>
-                            <h2 className={`text-xl font-bold ${hasErrors ? 'text-warning-400' : 'text-success-400'}`}>
-                                {hasErrors ? 'Sauvegarde terminée avec avertissements' : 'Sauvegarde réussie !'}
+                            <h2
+                                className={`text-xl font-bold ${hasErrors ? 'text-warning-400' : 'text-success-400'}`}
+                            >
+                                {hasErrors
+                                    ? 'Sauvegarde terminée avec avertissements'
+                                    : 'Sauvegarde réussie !'}
                             </h2>
-                            <p className="text-dark-400 text-sm">Durée : {formatDuration(result.duration)}</p>
+                            <p className="text-dark-400 text-sm">
+                                Durée : {formatDuration(result.duration)}
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -63,15 +94,21 @@ function ErrorReport({ result, onClose }: ErrorReportProps) {
                 <div className="p-6 border-b border-dark-800">
                     <div className="grid grid-cols-3 gap-4 text-center">
                         <div>
-                            <p className="text-2xl font-bold text-primary-400">{result.filesCreated}</p>
+                            <p className="text-2xl font-bold text-primary-400">
+                                {result.filesCreated}
+                            </p>
                             <p className="text-sm text-dark-400">Créés</p>
                         </div>
                         <div>
-                            <p className="text-2xl font-bold text-primary-400">{result.filesUpdated}</p>
+                            <p className="text-2xl font-bold text-primary-400">
+                                {result.filesUpdated}
+                            </p>
                             <p className="text-sm text-dark-400">Mis à jour</p>
                         </div>
                         <div>
-                            <p className="text-2xl font-bold text-dark-400">{result.filesDeleted}</p>
+                            <p className="text-2xl font-bold text-dark-400">
+                                {result.filesDeleted}
+                            </p>
                             <p className="text-sm text-dark-400">Supprimés</p>
                         </div>
                     </div>
@@ -94,7 +131,8 @@ function ErrorReport({ result, onClose }: ErrorReportProps) {
                                 >
                                     <p className="text-sm text-dark-200 truncate">{error.file}</p>
                                     <p className="text-xs text-dark-500 mt-1">
-                                        <span className="text-warning-400">[{error.code}]</span> {error.error}
+                                        <span className="text-warning-400">[{error.code}]</span>{' '}
+                                        {error.error}
                                     </p>
                                 </div>
                             ))}

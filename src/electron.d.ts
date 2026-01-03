@@ -114,7 +114,9 @@ export interface ElectronAPI {
         selectDestination: () => Promise<string | null>
     }
     folder: {
-        getSize: (folderPath: string) => Promise<{ success: boolean; size?: number; error?: string }>
+        getSize: (
+            folderPath: string
+        ) => Promise<{ success: boolean; size?: number; error?: string }>
     }
     backup: {
         start: (source: SourceConfig, destinationPath: string) => Promise<SyncResult>
@@ -173,4 +175,4 @@ declare global {
     }
 }
 
-export { }
+export {}

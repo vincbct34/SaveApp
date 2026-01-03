@@ -1,12 +1,23 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, Notification } from 'electron'
+import {
+    app,
+    BrowserWindow,
+    ipcMain,
+    dialog,
+    shell,
+    Tray,
+    Menu,
+    nativeImage,
+    Notification,
+} from 'electron'
 import { join, dirname } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { syncService, SyncProgress, SyncResult } from './services/SyncService'
-import { storeService, SourceConfig } from './services/StoreService'
+import { storeService, type SourceConfig, type BackupSchedule } from './services/StoreService'
 import { calculateFolderSize } from './services/FileUtils'
 import { usbService, DriveInfo } from './services/UsbService'
-import { schedulerService, BackupSchedule } from './services/SchedulerService'
+import { schedulerService } from './services/SchedulerService'
 import { googleDriveService, CloudUploadProgress } from './services/GoogleDriveService'
+import { logger } from './services/Logger'
 
 // Référence à la fenêtre principale pour envoyer les événements
 let mainWindow: BrowserWindow | null = null
@@ -132,9 +143,10 @@ function setupIpcHandlers(): void {
     ipcMain.handle(
         'backup:start',
         async (_event, source: SourceConfig, destinationPath: string) => {
-            console.log('🔄 [SaveApp] Démarrage de la sauvegarde...')
-            console.log(`   Source: ${source.path}`)
-            console.log(`   Destination: ${destinationPath}`)
+            logger.info('Main', 'Démarrage de la sauvegarde...', {
+                source: source.path,
+                destination: destinationPath,
+            })
 
             // Écouter les événements de progression
             const progressHandler = (progress: SyncProgress): void => {
@@ -145,16 +157,18 @@ function setupIpcHandlers(): void {
 
             try {
                 const result: SyncResult = await syncService.sync(source, destinationPath)
-                console.log('✅ [SaveApp] Sauvegarde terminée:', result)
+                logger.info('Main', 'Sauvegarde terminée', result)
 
                 // Notification native
                 if (Notification.isSupported()) {
                     new Notification({
-                        title: result.success ? 'Sauvegarde terminée' : 'Sauvegarde terminée avec erreurs',
+                        title: result.success
+                            ? 'Sauvegarde terminée'
+                            : 'Sauvegarde terminée avec erreurs',
                         body: result.success
                             ? `Sauvegarde de "${source.name}" réussie.`
                             : `Sauvegarde de "${source.name}" terminée avec ${result.errors.length} erreurs.`,
-                        silent: false
+                        silent: false,
                     }).show()
                 }
 
@@ -166,17 +180,17 @@ function setupIpcHandlers(): void {
     )
 
     ipcMain.on('backup:pause', () => {
-        console.log('⏸️ [SaveApp] Pause de la sauvegarde')
+        logger.info('Main', 'Pause de la sauvegarde')
         syncService.pause()
     })
 
     ipcMain.on('backup:resume', () => {
-        console.log('▶️ [SaveApp] Reprise de la sauvegarde')
+        logger.info('Main', 'Reprise de la sauvegarde')
         syncService.resume()
     })
 
     ipcMain.on('backup:cancel', () => {
-        console.log('❌ [SaveApp] Annulation de la sauvegarde')
+        logger.info('Main', 'Annulation de la sauvegarde')
         syncService.cancel()
     })
 
@@ -297,7 +311,7 @@ function setupIpcHandlers(): void {
 
         try {
             const result = await googleDriveService.uploadSource(source)
-            console.log('☁️ [SaveApp] Upload cloud terminé:', result)
+            logger.info('Main', 'Upload cloud terminé', result)
 
             // Notification native
             if (Notification.isSupported()) {
@@ -306,7 +320,7 @@ function setupIpcHandlers(): void {
                     body: result.success
                         ? `Sauvegarde cloud de "${source.name}" réussie.`
                         : `Upload de "${source.name}" terminé avec ${result.errors.length} erreurs.`,
-                    silent: false
+                    silent: false,
                 }).show()
             }
 
@@ -333,7 +347,11 @@ function setupIpcHandlers(): void {
     })
 
     ipcMain.handle('cloud:restore', async (_event, backupId: string, destPath: string) => {
-        const progressHandler = (progress: { downloaded: number; total: number; currentFile: string }): void => {
+        const progressHandler = (progress: {
+            downloaded: number
+            total: number
+            currentFile: string
+        }): void => {
             mainWindow?.webContents.send('cloud:restoreProgress', progress)
         }
 
@@ -346,7 +364,7 @@ function setupIpcHandlers(): void {
                 body: result.success
                     ? `${result.filesDownloaded} fichiers restaurés.`
                     : `Restauration terminée avec ${result.errors.length} erreurs.`,
-                silent: false
+                silent: false,
             }).show()
         }
 
@@ -367,7 +385,7 @@ app.whenReady().then(() => {
     // Démarrer le scheduler
     schedulerService.start()
     schedulerService.on('schedule:due', (schedule: BackupSchedule) => {
-        console.log(`[Main] Schedule due: ${schedule.name}`)
+        console.log(`[Main] Schedule due: ${schedule.name} `)
         mainWindow?.webContents.send('scheduler:run', schedule)
     })
 
@@ -385,7 +403,7 @@ app.whenReady().then(() => {
     })
 
     // Création du Tray
-    const iconPath = join(__dirname, '../../resources/icon.png') // A adapter selon ton projet
+    // const iconPath = join(__dirname, '../../resources/icon.png') // A adapter selon ton projet
     // Pour l'instant on utilise une icône par défaut si pas présente, ou on génère une empty image
     const icon = nativeImage.createEmpty() // Placeholder
 
@@ -393,7 +411,7 @@ app.whenReady().then(() => {
     const contextMenu = Menu.buildFromTemplate([
         {
             label: 'Ouvrir SaveApp',
-            click: () => mainWindow?.show()
+            click: () => mainWindow?.show(),
         },
         { type: 'separator' },
         {
@@ -401,8 +419,8 @@ app.whenReady().then(() => {
             click: () => {
                 isQuitting = true
                 app.quit()
-            }
-        }
+            },
+        },
     ])
     tray.setToolTip('SaveApp - Sauvegarde Automatique')
     tray.setContextMenu(contextMenu)

@@ -76,7 +76,13 @@ function App() {
     const [isAddingSource, setIsAddingSource] = useState(false) // Loader pour l'ajout de source
     const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set())
     const [destinations, setDestinations] = useState<Destination[]>([
-        { id: 'nas', type: 'nas', name: 'NAS Synology', path: '\\\\NAS\\Backups', available: false },
+        {
+            id: 'nas',
+            type: 'nas',
+            name: 'NAS Synology',
+            path: '\\\\NAS\\Backups',
+            available: false,
+        },
         { id: 'cloud', type: 'cloud', name: 'Google Drive', available: false },
     ])
     const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null)
@@ -100,11 +106,6 @@ function App() {
     useEffect(() => {
         isBackingUpRef.current = isBackingUp
     }, [isBackingUp])
-
-
-
-
-
 
     // Charger les données persistées au démarrage + USB
     useEffect(() => {
@@ -140,9 +141,7 @@ function App() {
                     setCloudUser(user)
                     // Marquer la destination cloud comme disponible
                     setDestinations((prev) =>
-                        prev.map((d) =>
-                            d.type === 'cloud' ? { ...d, available: true } : d
-                        )
+                        prev.map((d) => (d.type === 'cloud' ? { ...d, available: true } : d))
                     )
                 })
             }
@@ -151,8 +150,8 @@ function App() {
         // Charger les lecteurs externes disponibles (USB + disques fixes non-C:)
         window.electronAPI.usb.getDrives().then((drives) => {
             // Inclure USB et disques fixes non-système
-            const externalDrives = drives.filter((d) =>
-                d.isReady && (d.type === 'usb' || (d.type === 'fixed' && d.letter !== 'C:'))
+            const externalDrives = drives.filter(
+                (d) => d.isReady && (d.type === 'usb' || (d.type === 'fixed' && d.letter !== 'C:'))
             )
             setDestinations((prev) => {
                 // Garder les destinations non-USB + ajouter les lecteurs détectés
@@ -174,9 +173,13 @@ function App() {
         // Écouter les branchements
         const unsubConnected = window.electronAPI.usb.onDriveConnected((drive) => {
             // Inclure USB et disques fixes non-système
-            const isExternal = drive.isReady && (drive.type === 'usb' || (drive.type === 'fixed' && drive.letter !== 'C:'))
+            const isExternal =
+                drive.isReady &&
+                (drive.type === 'usb' || (drive.type === 'fixed' && drive.letter !== 'C:'))
             if (isExternal) {
-                console.log(`[SaveApp] Lecteur externe connecté: ${drive.letter} (${drive.label}) ID: ${drive.id}`)
+                console.log(
+                    `[SaveApp] Lecteur externe connecté: ${drive.letter} (${drive.label}) ID: ${drive.id}`
+                )
                 toast.success(`Disque connecté : ${drive.label} (${drive.letter})`, {
                     id: `usb-connect-${drive.id}`,
                 })
@@ -201,17 +204,20 @@ function App() {
                 setAutoBackupDriveIds((currentAutoBackupIds) => {
                     // Check 1: Est-ce que ce drive est configuré pour l'auto-backup ?
                     if (currentAutoBackupIds.has(drive.id)) {
-
                         // Check 2: Est-ce qu'un backup est déjà en cours ?
                         if (isBackingUpRef.current) {
-                            console.log(`[SaveApp] ⚠️ Auto-backup ignoré pour ${drive.label} (Backup déjà en cours)`)
+                            console.log(
+                                `[SaveApp] ⚠️ Auto-backup ignoré pour ${drive.label} (Backup déjà en cours)`
+                            )
                             return currentAutoBackupIds
                         }
 
                         // Check 3: Est-ce qu'on vient juste de lancer un backup pour ce drive ?
                         // (Protection anti-rebond si le drive se déco/reco rapidement)
                         if (lastAutoBackupDriveIdRef.current === drive.id) {
-                            console.log(`[SaveApp] ⚠️ Auto-backup ignoré pour ${drive.label} (Déjà déclenché récemment)`)
+                            console.log(
+                                `[SaveApp] ⚠️ Auto-backup ignoré pour ${drive.label} (Déjà déclenché récemment)`
+                            )
                             return currentAutoBackupIds
                         }
 
@@ -228,7 +234,7 @@ function App() {
                             type: 'usb',
                             name: `${drive.label} (${drive.letter})`,
                             path: drive.letter + '\\SaveApp_Backup', // Chemin forcé pour l'auto-backup
-                            available: true
+                            available: true,
                         }
 
                         // Délai pour s'assurer que le disque est prêt (1.5s)
@@ -419,21 +425,24 @@ function App() {
     /**
      * Toggle l'auto-backup pour une destination
      */
-    const handleToggleAutoBackup = useCallback((id: string) => {
-        const next = new Set(autoBackupDriveIds)
-        if (next.has(id)) {
-            next.delete(id)
-            toast('Auto-backup désactivé pour ce disque', {
-                id: `auto-backup-disabled-${id}`,
-            })
-        } else {
-            next.add(id)
-            toast.success('Auto-backup activé pour ce disque', {
-                id: `auto-backup-enabled-${id}`,
-            })
-        }
-        setAutoBackupDriveIds(next)
-    }, [autoBackupDriveIds])
+    const handleToggleAutoBackup = useCallback(
+        (id: string) => {
+            const next = new Set(autoBackupDriveIds)
+            if (next.has(id)) {
+                next.delete(id)
+                toast('Auto-backup désactivé pour ce disque', {
+                    id: `auto-backup-disabled-${id}`,
+                })
+            } else {
+                next.add(id)
+                toast.success('Auto-backup activé pour ce disque', {
+                    id: `auto-backup-enabled-${id}`,
+                })
+            }
+            setAutoBackupDriveIds(next)
+        },
+        [autoBackupDriveIds]
+    )
 
     /**
      * Connecte à Google Drive
@@ -448,9 +457,7 @@ function App() {
                 setIsCloudConnected(true)
                 setCloudUser(result.user)
                 setDestinations((prev) =>
-                    prev.map((d) =>
-                        d.type === 'cloud' ? { ...d, available: true } : d
-                    )
+                    prev.map((d) => (d.type === 'cloud' ? { ...d, available: true } : d))
                 )
                 toast.success(`Connecté à Google Drive (${result.user.email})`)
             } else {
@@ -475,12 +482,10 @@ function App() {
             setIsCloudConnected(false)
             setCloudUser(null)
             setDestinations((prev) =>
-                prev.map((d) =>
-                    d.type === 'cloud' ? { ...d, available: false } : d
-                )
+                prev.map((d) => (d.type === 'cloud' ? { ...d, available: false } : d))
             )
             // Désélectionner si c'était sélectionné
-            setSelectedDestinationId((prev) => prev === 'cloud' ? null : prev)
+            setSelectedDestinationId((prev) => (prev === 'cloud' ? null : prev))
             toast('Déconnecté de Google Drive')
         } catch (error) {
             console.error('[SaveApp] Erreur déconnexion cloud:', error)
@@ -541,7 +546,9 @@ function App() {
         // Priorité 1 : Destination définie par l'auto-backup (via ref pour contourner l'async state)
         if (autoBackupDestinationRef.current) {
             destinationPath = autoBackupDestinationRef.current.path || null
-            console.log(`[SaveApp] Auto-Backup Destination: ${autoBackupDestinationRef.current.name}`)
+            console.log(
+                `[SaveApp] Auto-Backup Destination: ${autoBackupDestinationRef.current.name}`
+            )
             // Reset de la ref pour les prochains backups manuels
             autoBackupDestinationRef.current = null
         } else if (isCloudBackup) {
@@ -574,7 +581,10 @@ function App() {
         setProgress(null)
         setLastResult(null)
 
-        toast.info(isCloudBackup ? 'Upload vers Google Drive...' : 'Démarrage de la sauvegarde...', { id: 'backup-start' })
+        toast.info(
+            isCloudBackup ? 'Upload vers Google Drive...' : 'Démarrage de la sauvegarde...',
+            { id: 'backup-start' }
+        )
 
         try {
             for (const source of sourcesToBackup) {
@@ -597,7 +607,10 @@ function App() {
                         filesUpdated: 0,
                         filesDeleted: 0,
                         bytesTransferred: result.bytesTransferred,
-                        errors: result.errors.map((e: { file: string; error: string }) => ({ ...e, code: 'CLOUD' })),
+                        errors: result.errors.map((e: { file: string; error: string }) => ({
+                            ...e,
+                            code: 'CLOUD',
+                        })),
                         duration: result.duration,
                     })
                 } else {
@@ -618,14 +631,16 @@ function App() {
                     })
                 } else {
                     const skippedCount = 'filesSkipped' in result ? result.filesSkipped : 0
-                    const skippedInfo = isCloudBackup && skippedCount > 0
-                        ? ` (${skippedCount} inchangés)`
-                        : ''
-                    toast.success(isCloudBackup
-                        ? `Upload terminé : ${source.name}${skippedInfo}`
-                        : `Sauvegarde terminée : ${source.name}`, {
-                        id: `backup-success-${source.id}`,
-                    })
+                    const skippedInfo =
+                        isCloudBackup && skippedCount > 0 ? ` (${skippedCount} inchangés)` : ''
+                    toast.success(
+                        isCloudBackup
+                            ? `Upload terminé : ${source.name}${skippedInfo}`
+                            : `Sauvegarde terminée : ${source.name}`,
+                        {
+                            id: `backup-success-${source.id}`,
+                        }
+                    )
                 }
             }
 
@@ -715,7 +730,9 @@ function App() {
                     />
 
                     {/* Bouton caché pour déclenchement auto */}
-                    <button id="start-backup-btn" className="hidden" onClick={handleStartBackup}>Trigger</button>
+                    <button id="start-backup-btn" className="hidden" onClick={handleStartBackup}>
+                        Trigger
+                    </button>
 
                     {isBackingUp && progress && (
                         <ProgressBar
@@ -734,7 +751,7 @@ function App() {
                             onRemoveSource={handleRemoveSource}
                             onToggleSource={handleToggleSource}
                             isAddingSource={isAddingSource}
-                        // Passer l'état de chargement (si le composant le supporte, sinon on l'ajoutera)
+                            // Passer l'état de chargement (si le composant le supporte, sinon on l'ajoutera)
                         />
                         <DestinationsList
                             destinations={destinations}
@@ -755,10 +772,7 @@ function App() {
 
             {/* Modal rapport d'erreurs */}
             {showErrorReport && lastResult && (
-                <ErrorReport
-                    result={lastResult}
-                    onClose={() => setShowErrorReport(false)}
-                />
+                <ErrorReport result={lastResult} onClose={() => setShowErrorReport(false)} />
             )}
 
             <ScheduleManager
@@ -768,10 +782,7 @@ function App() {
                 destinations={destinations}
             />
 
-            <RestoreModal
-                isOpen={showRestoreModal}
-                onClose={() => setShowRestoreModal(false)}
-            />
+            <RestoreModal isOpen={showRestoreModal} onClose={() => setShowRestoreModal(false)} />
         </div>
     )
 }
