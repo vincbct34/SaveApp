@@ -1,6 +1,6 @@
 {
   "name": "saveapp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Application de sauvegarde automatisée pour utilisateurs non-techniques",
   "main": "dist/main/index.js",
   "scripts": {
@@ -12,7 +12,8 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"electron/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"electron/**/*.ts\"",
-    "ci": "npm run typecheck && npm run lint && npm run format:check"
+    "ci": "npm run typecheck && npm run lint && npm run format:check",
+    "package": "npm run build && electron-builder --config electron-builder.config.js"
   },
   "keywords": [
     "backup",
@@ -31,6 +32,7 @@
     "@vitejs/plugin-react": "^5.1.2",
     "autoprefixer": "^10.4.23",
     "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
     "electron-store": "^11.0.2",
     "electron-vite": "^5.0.0",
     "eslint": "^8.57.1",
