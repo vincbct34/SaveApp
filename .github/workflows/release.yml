@@ -1,0 +1,36 @@
+name: Release Build
+
+on:
+    push:
+        tags:
+            - "v*"
+
+jobs:
+    release:
+        runs-on: windows-latest
+
+        defaults:
+            run:
+                shell: bash
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: "npm"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build and Package
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  npm run build
+                  npx electron-builder --config electron-builder.config.js --publish always
+
+            # Note: electron-builder with --publish always and GH_TOKEN will handle the release creation/upload automatically.
+            # If we wanted to separate it, we could use softprops/action-gh-release, but electron-builder is cleaner for electron apps.
