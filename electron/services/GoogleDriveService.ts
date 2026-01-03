@@ -99,21 +99,34 @@ class GoogleDriveService extends EventEmitter {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { app } = require('electron') as typeof import('electron')
 
+            const isPackaged = app.isPackaged
+            logger.info('GoogleDrive', `Mode: ${isPackaged ? 'production' : 'développement'}`)
+            logger.info('GoogleDrive', `process.resourcesPath: ${process.resourcesPath}`)
+            logger.info('GoogleDrive', `app.getAppPath(): ${app.getAppPath()}`)
+            logger.info('GoogleDrive', `app.getPath('exe'): ${app.getPath('exe')}`)
+
             // Chercher le fichier de credentials à plusieurs endroits
-            const possiblePaths = [
-                // En production (extraResources)
-                path.join(process.resourcesPath || '', 'google-credentials.json'),
-                // Chemin relatif à l'exécutable (Windows production)
-                path.join(path.dirname(app.getPath('exe')), 'resources', 'google-credentials.json'),
-                // À côté de l'exécutable directement
-                path.join(path.dirname(app.getPath('exe')), 'google-credentials.json'),
-                // En développement - racine du projet
-                path.join(app.getAppPath(), 'google-credentials.json'),
-                path.join(process.cwd(), 'google-credentials.json'),
-                // Chemins relatifs au code compilé
-                path.join(__dirname, '../../google-credentials.json'),
-                path.join(__dirname, '../../../google-credentials.json'),
-            ]
+            const possiblePaths = isPackaged
+                ? [
+                      // En production - process.resourcesPath est le chemin correct
+                      path.join(process.resourcesPath, 'google-credentials.json'),
+                      // Chemin relatif à l'exécutable (Windows production)
+                      path.join(
+                          path.dirname(app.getPath('exe')),
+                          'resources',
+                          'google-credentials.json'
+                      ),
+                      // À côté de l'exécutable directement
+                      path.join(path.dirname(app.getPath('exe')), 'google-credentials.json'),
+                  ]
+                : [
+                      // En développement - racine du projet
+                      path.join(app.getAppPath(), 'google-credentials.json'),
+                      path.join(process.cwd(), 'google-credentials.json'),
+                      // Chemins relatifs au code compilé
+                      path.join(__dirname, '../../google-credentials.json'),
+                      path.join(__dirname, '../../../google-credentials.json'),
+                  ]
 
             logger.info('GoogleDrive', 'Recherche du fichier credentials dans:', possiblePaths)
 
