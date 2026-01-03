@@ -4,9 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2026-01-03
 
+### Added
+- **Settings UI:** Added settings modal with toggle for "Launch at startup" option.
+- **Auto-start:** SaveApp now starts automatically with Windows (enabled by default, configurable in settings).
+- **Tray icon:** Application now displays its icon in the system tray.
+
 ### Fixed
 - **CI/CD:** Fixed release workflow permissions (403 Forbidden).
 - **Packaging:** Fixed issue where `google-credentials.json` was missing in the packaged application by adding it to `extraResources` and updating path resolution.
+- **Google Drive:** Improved credentials file detection for production builds.
 
 ## [0.2.0] - 2026-01-03
 

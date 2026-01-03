@@ -59,6 +59,7 @@ export interface GoogleUserInfo {
 export interface UserPreferences {
     autoBackupOnUSB: boolean
     keepDeletedFiles: boolean
+    launchAtStartup: boolean
     lastOpenedPath?: string
 }
 
@@ -86,6 +87,7 @@ const defaults: StoreSchema = {
     preferences: {
         autoBackupOnUSB: true,
         keepDeletedFiles: false,
+        launchAtStartup: true,
     },
     autoBackupDriveIds: [],
     schedules: [],

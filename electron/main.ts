@@ -10,6 +10,7 @@ import {
     Notification,
 } from 'electron'
 import { join, dirname } from 'path'
+import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { syncService, SyncProgress, SyncResult } from './services/SyncService'
 import { storeService, type SourceConfig, type BackupSchedule } from './services/StoreService'
@@ -218,6 +219,15 @@ function setupIpcHandlers(): void {
         'store:setPreferences',
         (_event, prefs: Parameters<typeof storeService.setPreferences>[0]) => {
             storeService.setPreferences(prefs)
+
+            // Si launchAtStartup est modifié, mettre à jour les paramètres de démarrage Windows
+            if (prefs.launchAtStartup !== undefined) {
+                app.setLoginItemSettings({
+                    openAtLogin: prefs.launchAtStartup,
+                    path: app.getPath('exe'),
+                })
+            }
+
             return true
         }
     )
@@ -394,6 +404,14 @@ app.whenReady().then(() => {
     })
 
     setupIpcHandlers()
+
+    // Configurer le démarrage automatique selon la préférence utilisateur
+    const preferences = storeService.getPreferences()
+    app.setLoginItemSettings({
+        openAtLogin: preferences.launchAtStartup,
+        path: app.getPath('exe'),
+    })
+
     createWindow()
 
     app.on('activate', () => {
@@ -402,10 +420,27 @@ app.whenReady().then(() => {
         }
     })
 
-    // Création du Tray
-    // const iconPath = join(__dirname, '../../resources/icon.png') // A adapter selon ton projet
-    // Pour l'instant on utilise une icône par défaut si pas présente, ou on génère une empty image
-    const icon = nativeImage.createEmpty() // Placeholder
+    // Création du Tray avec l'icône de l'application
+    const possibleIconPaths = [
+        join(process.resourcesPath || '', 'icon.png'),
+        join(__dirname, '../../resources/icon.png'),
+        join(__dirname, '../../../resources/icon.png'),
+        join(app.getAppPath(), 'resources/icon.png'),
+    ]
+
+    let icon = nativeImage.createEmpty()
+    for (const iconPath of possibleIconPaths) {
+        try {
+            if (existsSync(iconPath)) {
+                icon = nativeImage.createFromPath(iconPath)
+                // Redimensionner pour le tray (16x16 ou 32x32 selon l'OS)
+                icon = icon.resize({ width: 16, height: 16 })
+                break
+            }
+        } catch {
+            // Continuer avec le prochain chemin
+        }
+    }
 
     tray = new Tray(icon)
     const contextMenu = Menu.buildFromTemplate([

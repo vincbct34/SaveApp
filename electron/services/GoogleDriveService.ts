@@ -95,16 +95,31 @@ class GoogleDriveService extends EventEmitter {
      */
     private loadCredentials(): GoogleCredentials | null {
         try {
+            // Utiliser app importé depuis electron
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { app } = require('electron') as typeof import('electron')
+
             // Chercher le fichier de credentials à plusieurs endroits
             const possiblePaths = [
+                // En production (extraResources)
+                path.join(process.resourcesPath || '', 'google-credentials.json'),
+                // Chemin relatif à l'exécutable (Windows production)
+                path.join(path.dirname(app.getPath('exe')), 'resources', 'google-credentials.json'),
+                // À côté de l'exécutable directement
+                path.join(path.dirname(app.getPath('exe')), 'google-credentials.json'),
+                // En développement - racine du projet
+                path.join(app.getAppPath(), 'google-credentials.json'),
                 path.join(process.cwd(), 'google-credentials.json'),
-                path.join(process.resourcesPath, 'google-credentials.json'),
+                // Chemins relatifs au code compilé
                 path.join(__dirname, '../../google-credentials.json'),
                 path.join(__dirname, '../../../google-credentials.json'),
             ]
 
+            logger.info('GoogleDrive', 'Recherche du fichier credentials dans:', possiblePaths)
+
             for (const credPath of possiblePaths) {
                 if (fs.existsSync(credPath)) {
+                    logger.info('GoogleDrive', `Fichier credentials trouvé: ${credPath}`)
                     const content = fs.readFileSync(credPath, 'utf-8')
                     const parsed = JSON.parse(content)
 
@@ -126,10 +141,13 @@ class GoogleDriveService extends EventEmitter {
                 }
             }
 
-            console.error('[GoogleDrive] Fichier google-credentials.json non trouvé')
+            logger.error(
+                'GoogleDrive',
+                'Fichier google-credentials.json non trouvé dans aucun chemin'
+            )
             return null
         } catch (error) {
-            console.error('[GoogleDrive] Erreur chargement credentials:', error)
+            logger.error('GoogleDrive', 'Erreur chargement credentials:', error)
             return null
         }
     }

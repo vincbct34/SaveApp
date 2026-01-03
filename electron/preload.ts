@@ -34,6 +34,7 @@ export interface SyncResult {
 export interface UserPreferences {
     autoBackupOnUSB: boolean
     keepDeletedFiles: boolean
+    launchAtStartup: boolean
     lastOpenedPath?: string
 }
 
