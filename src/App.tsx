@@ -93,6 +93,7 @@ function App() {
     // Refs pour la logique d'auto-backup (accessibles dans les closures)
     const isBackingUpRef = useRef(false)
     const lastAutoBackupDriveIdRef = useRef<string | null>(null)
+    const isCancelledRef = useRef(false)
     const autoBackupDestinationRef = useRef<Destination | null>(null)
 
     // Synchroniser la ref isBackingUp
@@ -567,6 +568,8 @@ function App() {
 
         // ÉTAPE 3 : Lancer la sauvegarde
         setIsBackingUp(true)
+        isBackingUpRef.current = true
+        isCancelledRef.current = false
         setIsPaused(false)
         setProgress(null)
         setLastResult(null)
@@ -575,6 +578,12 @@ function App() {
 
         try {
             for (const source of sourcesToBackup) {
+                // Vérifier si annulé AVANT de commencer l'upload de cette source
+                if (isCancelledRef.current) {
+                    console.log(`[SaveApp] Sauvegarde annulée, skip ${source.name}`)
+                    break
+                }
+
                 console.log(`[SaveApp] Sauvegarde de ${source.name}...`)
 
                 let result
@@ -594,6 +603,12 @@ function App() {
                 } else {
                     result = await window.electronAPI.backup.start(source, destinationPath!)
                     setLastResult(result)
+                }
+
+                // Ne pas afficher de notification si annulé pendant l'upload
+                if (isCancelledRef.current) {
+                    console.log(`[SaveApp] Upload de ${source.name} annulé`)
+                    break
                 }
 
                 if (!result.success || result.errors.length > 0) {
@@ -656,6 +671,9 @@ function App() {
      */
     const handleCancelBackup = useCallback(() => {
         if (!window.electronAPI) return
+
+        // Marquer comme annulé pour arrêter la boucle de sources
+        isCancelledRef.current = true
 
         if (isCloudBackupRef.current) {
             window.electronAPI.cloud.cancel()
