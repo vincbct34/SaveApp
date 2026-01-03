@@ -5,6 +5,7 @@ module.exports = {
         output: 'release/${version}',
         buildResources: 'resources',
     },
+    extraResources: ['google-credentials.json'],
     files: [
         'dist/**/*',
         'electron/**/*',

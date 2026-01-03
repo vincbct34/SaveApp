@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **CI/CD:** Fixed release workflow permissions (403 Forbidden).
+- **Packaging:** Fixed issue where `google-credentials.json` was missing in the packaged application by adding it to `extraResources` and updating path resolution.
 
 ## [0.2.0] - 2026-01-03
 

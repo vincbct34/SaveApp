@@ -98,6 +98,7 @@ class GoogleDriveService extends EventEmitter {
             // Chercher le fichier de credentials à plusieurs endroits
             const possiblePaths = [
                 path.join(process.cwd(), 'google-credentials.json'),
+                path.join(process.resourcesPath, 'google-credentials.json'),
                 path.join(__dirname, '../../google-credentials.json'),
                 path.join(__dirname, '../../../google-credentials.json'),
             ]
@@ -970,10 +971,10 @@ class GoogleDriveService extends EventEmitter {
 
         return new Promise((resolve, reject) => {
             const dest = fs.createWriteStream(destPath)
-            ;(response.data as NodeJS.ReadableStream)
-                .pipe(dest)
-                .on('finish', resolve)
-                .on('error', reject)
+                ; (response.data as NodeJS.ReadableStream)
+                    .pipe(dest)
+                    .on('finish', resolve)
+                    .on('error', reject)
         })
     }
 }
