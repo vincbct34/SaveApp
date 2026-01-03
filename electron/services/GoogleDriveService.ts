@@ -437,35 +437,28 @@ class GoogleDriveService extends EventEmitter {
 
     /**
      * Upload un fichier vers Google Drive
+     * Note: Le tracking de progression par fichier est désactivé pour éviter les erreurs de stream
      */
     private async uploadFile(
         localPath: string,
         fileName: string,
         parentId: string,
-        onProgress?: (bytes: number) => void
+        _onProgress?: (bytes: number) => void
     ): Promise<{ success: boolean; error?: string }> {
         if (!this.drive) {
             return { success: false, error: 'Client Drive non initialisé' }
         }
 
         try {
-            const stats = await fs.promises.stat(localPath)
-            const fileSize = stats.size
 
-            // Créer un stream de lecture
-            const fileStream = fs.createReadStream(localPath)
-            let uploadedBytes = 0
-
-            fileStream.on('data', (chunk: Buffer) => {
-                uploadedBytes += chunk.length
-                onProgress?.(uploadedBytes)
-            })
-
-            // Vérifier si le fichier existe déjà
+            // Vérifier si le fichier existe déjà AVANT de créer le stream
             const existingFiles = await this.drive.files.list({
                 q: `name='${fileName}' and '${parentId}' in parents and trashed=false`,
                 fields: 'files(id)',
             })
+
+            // Créer le stream APRÈS la vérification
+            const fileStream = fs.createReadStream(localPath)
 
             if (existingFiles.data.files && existingFiles.data.files.length > 0) {
                 // Mettre à jour le fichier existant
